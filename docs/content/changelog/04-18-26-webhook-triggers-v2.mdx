@@ -1,73 +1,36 @@
 ---
-title: "Webhook Triggers V2: Dedicated Endpoints, Signature Verification, and Per-User Authorization"
-description: "New opt-in webhook pipeline with isolated endpoints per OAuth app, HMAC signature verification, private-channel support, and config-level filters. Fully backward compatible — existing triggers keep working with zero action required."
+title: "Webhook Triggers V2"
+description: "Dedicated webhook endpoint per OAuth app, ingress-level signature verification, per-user authorization for private channels and DMs, and config-level event filters. Opt-in; V1 is unchanged."
 date: "2026-04-18"
 ---
 
-We're rolling out **Webhook Triggers V2** — a new pipeline that gives each OAuth app its own dedicated webhook endpoint, verifies provider signatures at ingress, supports per-user authorization for private channels and DMs, and adds event-level config filters.
-
-<Callout type="warn">
-**No immediate action required.** Your existing webhook triggers continue to work exactly as they do today. V2 is opt-in per new trigger slug — you adopt it on your own schedule.
-</Callout>
+Webhook Triggers V2 introduces a first-class `webhook_endpoints` resource with a dedicated ingress URL per OAuth app. V2 is **opt-in** and scoped to new trigger slugs — existing V1 triggers, URLs, and payload formats are unchanged.
 
 ## Summary
 
-| Change | Type | Action Required |
-|--------|------|-----------------|
-| New `webhook_endpoints` API | New Feature | No |
-| V2 ingress URL (`/api/v3/webhook_ingress/...`) | New Feature | Only for V2 triggers |
-| Signature verification at ingress | New Feature | Automatic on V2 |
-| New Slack V2 trigger slugs | New Feature | Opt-in |
-| Existing V1 triggers and URLs | Unchanged | No |
-| One OAuth app per project (V2 only) | Constraint | Only when opting in |
+| Change | Action required |
+|---|---|
+| New `webhook_endpoints` API | None (opt-in) |
+| New ingress path `/api/v3/webhook_ingress/{toolkit}/{we_*}/trigger_event` | None (opt-in) |
+| Ingress-level signature verification | Automatic for V2 endpoints |
+| New Slack V2 slugs (`SLACK_CHANNEL_MESSAGE_RECEIVED`, `SLACK_DIRECT_MESSAGE_RECEIVED`) | Opt-in |
+| V1 ingress path and all legacy trigger slugs | None — unchanged |
 
----
+## What's in V2
 
-## Why V2?
-
-The V1 pipeline has a few long-standing gaps:
-
-- **Shared ingress URL per toolkit.** Apps like Slack and HubSpot routed every customer's events through a single `/handle` endpoint. This made it impossible to rate-limit, meter, or isolate tenants cleanly at ingress.
-- **No signature verification at the gateway.** Spoofed payloads were forwarded as if they were genuine.
-- **No per-user authorization for app-level events.** Private channel messages and DMs couldn't be delivered safely — events flagged as requiring authorization were silently dropped.
-- **No config-level filters.** Subscribing to messages in `#general` meant receiving every channel's messages and filtering client-side.
-- **No lifecycle cleanup.** Deleting a trigger didn't unregister the provider-side webhook.
-
-V2 addresses all of these while keeping V1 fully operational for existing triggers.
-
----
-
-## What's New
-
-### Dedicated webhook endpoints per OAuth app
-
-V2 introduces a first-class `webhook_endpoints` resource. Each endpoint is keyed by `(toolkit_slug, project_id, client_id)` and exposes a unique ingress URL containing a random `we_*` identifier:
+**Dedicated endpoint per OAuth app.** Each `webhook_endpoint` is keyed by `(toolkit_slug, project_id, client_id)` and exposes its own URL containing a random `we_*` identifier:
 
 ```
-https://backend.composio.dev/api/v3/webhook_ingress/{toolkit_slug}/{we_xxx}/trigger_event
+https://backend.composio.dev/api/v3/webhook_ingress/{toolkit}/{we_xxx}/trigger_event
 ```
 
-Because each OAuth app now has its own URL, we can:
+This replaces V1's shared `/handle` URL per toolkit. Events arriving on a V2 URL are fanned out only to trigger instances on that endpoint's project.
 
-- **Rate-limit and meter per endpoint** — noisy tenants no longer affect other customers
-- **Fan out events only to trigger instances linked to this endpoint** — no cross-tenant leakage
-- **Verify signatures with per-endpoint secrets** — missing or invalid signatures are rejected at the gateway
-- **Attribute billing and observability per endpoint** — cleaner usage and health dashboards
-- **Run deterministic teardown** — delete endpoint, rotate secrets, track verification status independently
+**Signature verification at ingress.** Apollo verifies HMAC-SHA256 (and Ed25519 or `token_match` where applicable) using the signing secret stored on the endpoint. Invalid payloads return `401` before any work is enqueued.
 
-### Signature verification at ingress
+**Per-user authorization for app-level events.** Toolkits with per-user visibility — Slack being the first — can use an app-level token (e.g. `xapp-…` with `authorizations:read`) to resolve which connected users are authorized for a given event. Only those users' triggers fire. This enables safe delivery of private channel and DM events that V1 silently dropped.
 
-Apollo verifies HMAC-SHA256 (and provider-specific equivalents like Ed25519 for Svix or `token_match` for Telegram) on every V2 request using the signing secret you stored on the endpoint. Invalid payloads are rejected with `401` before any work is enqueued.
-
-### Per-user authorization for private channels and DMs
-
-For app-level toolkits with per-user visibility (Slack being the primary example), V2 uses an app-level token you provide (e.g., Slack `xapp-…` with the `authorizations:read` scope) to resolve exactly which connected users can see a given event. Only those users' triggers fire.
-
-This unlocks triggers like `SLACK_DIRECT_MESSAGE_RECEIVED` that were not safely deliverable on V1.
-
-### Config-level filters
-
-V2 triggers support rich config filters applied at match-time against the event payload:
+**Config-level filters.** V2 triggers filter events against `trigger_config` at match time:
 
 ```json
 {
@@ -79,43 +42,33 @@ V2 triggers support rich config filters applied at match-time against the event 
 }
 ```
 
-You only receive events that match the filter — no client-side filtering required.
+**Lifecycle support.** Provider handshakes (Slack `url_verification`, Asana `X-Hook-Secret`, Outlook validation tokens) are handled at ingress. Provider-side webhooks are deregistered when user-level triggers are deleted.
 
-### Handshake + lifecycle support
+## API reference
 
-Provider handshakes (Slack `url_verification`, Asana `X-Hook-Secret`, Outlook validation tokens, etc.) are handled centrally in Apollo based on each toolkit's webhook spec. Provider-side webhooks are also torn down when you delete a user-level trigger.
+All endpoints require a project API key (`x-api-key`).
 
----
-
-## New API Endpoints
-
-All endpoints live under `/api/v3/webhook_endpoints` and require your project API key (`x-api-key`).
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/v3/webhook_endpoints/schema?toolkit_slug={slug}` | Discover required fields (e.g. `webhook_signing_secret`, `app_token` for Slack) |
-| `POST` | `/api/v3/webhook_endpoints` | Create (or fetch) an endpoint. Idempotent per `(toolkit_slug, project, client_id)` |
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v3/webhook_endpoints/schema?toolkit_slug={slug}` | List required setup fields for a toolkit |
+| `POST` | `/api/v3/webhook_endpoints` | Create an endpoint (idempotent per `toolkit_slug + client_id` within a project) |
 | `GET` | `/api/v3/webhook_endpoints` | List endpoints in the current project |
-| `GET` | `/api/v3/webhook_endpoints/{id}` | Get details, including `verified_at` (set after handshake) |
-| `POST` | `/api/v3/webhook_endpoints/{id}` | Configure `setup_data` (full replace) |
-| `PATCH` | `/api/v3/webhook_endpoints/{id}` | Rotate or add a single secret without touching the others |
-| `DELETE` | `/api/v3/webhook_endpoints/{id}` | Soft-delete the endpoint |
+| `GET` | `/api/v3/webhook_endpoints/{id}` | Get a single endpoint, including `verified_at` |
+| `POST` | `/api/v3/webhook_endpoints/{id}` | Replace `setup_data` |
+| `PATCH` | `/api/v3/webhook_endpoints/{id}` | Update one or more fields in `setup_data` |
+| `DELETE` | `/api/v3/webhook_endpoints/{id}` | Soft-delete |
 
-And the new ingress route (this is the URL you paste into your provider's dashboard):
+Provider events are posted to:
 
-| Method | Endpoint |
-|--------|----------|
+| Method | Path |
+|---|---|
 | `POST` | `/api/v3/webhook_ingress/{toolkit_slug}/{webhook_endpoint_nano_id}/trigger_event` |
 
-The V1 route at `/api/v3/trigger_instances/{toolkit_slug}/{project_id}/handle` is **not deprecated** and keeps working for existing triggers.
+## Migration walkthrough (Slack)
 
----
+Slack is the first toolkit on V2. The same flow applies to every toolkit added later.
 
-## Adopting V2 (Slack example)
-
-V2 becomes available toolkit-by-toolkit. **Slack is the first production rollout.** The flow below applies to every toolkit we migrate next.
-
-### 1. Check required fields for the toolkit
+### 1. Discover required fields
 
 ```bash
 curl "https://backend.composio.dev/api/v3/webhook_endpoints/schema?toolkit_slug=slack" \
@@ -128,151 +81,91 @@ curl "https://backend.composio.dev/api/v3/webhook_endpoints/schema?toolkit_slug=
 curl -X POST "https://backend.composio.dev/api/v3/webhook_endpoints" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "toolkit_slug": "slack",
-    "client_id": "<YOUR_SLACK_CLIENT_ID>"
-  }'
+  -d '{ "toolkit_slug": "slack", "client_id": "YOUR_SLACK_CLIENT_ID" }'
 ```
 
-The response contains a `webhook_url`. This call is idempotent — calling it again with the same parameters returns the existing endpoint.
+The response includes `webhook_url`. The call is idempotent.
 
-### 3. Store your signing secret **before** switching the dashboard URL
+### 3. Store the signing secret
 
 ```bash
-curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/<ENDPOINT_ID>" \
+curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/ENDPOINT_ID" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "data": {
-      "webhook_signing_secret": "<YOUR_SIGNING_SECRET>"
-    }
-  }'
+  -d '{ "data": { "webhook_signing_secret": "YOUR_SIGNING_SECRET" } }'
 ```
 
 <Callout type="warn">
-**Order matters.** If you paste the V2 URL into Slack before the signing secret is stored, every event fails signature verification with HTTP `400`, and Slack may disable the endpoint after ~36 hours of failures. Always: **store secret first, then switch the URL**.
+Store the signing secret before switching the provider's callback URL. If Slack posts to a V2 URL without a secret available, every request fails with `400` and Slack may auto-disable the endpoint after ~36 hours of failures.
 </Callout>
 
-### 4. Switch your Slack app's Event Subscriptions URL to the V2 `webhook_url`
+### 4. Point your Slack app at the V2 URL
 
-Slack sends a `url_verification` challenge, Apollo responds automatically, and `verified_at` is set on the endpoint.
+Set **Event Subscriptions → Request URL** in your Slack app to the `webhook_url` returned in step 2. Slack issues a `url_verification` challenge; Apollo responds and sets `verified_at` on the endpoint.
 
-### 5. (Optional) Add the app-level token for private channel and DM support
+### 5. (Optional) Add an app-level token for private channel and DM triggers
+
+Required only for triggers that need per-user authorization.
 
 ```bash
-curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/<ENDPOINT_ID>" \
+curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/ENDPOINT_ID" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "data": {
-      "app_token": "xapp-..."
-    }
-  }'
+  -d '{ "data": { "app_token": "xapp-..." } }'
 ```
 
-To generate the token: in your Slack app, go to **Basic Information → App-Level Tokens**, click **Generate Token and Scopes**, and add the `authorizations:read` scope.
+Generate the token from **Slack app → Basic Information → App-Level Tokens** with scope `authorizations:read`.
 
-### 6. Create trigger instances using the new V2 slugs
+### 6. Create V2 trigger instances
 
-| V1 slug (still works) | V2 equivalent (opt-in) | V2 extras |
+| V1 slug (still supported) | V2 replacement | Notes |
 |---|---|---|
-| `SLACK_RECEIVE_MESSAGE` | `SLACK_CHANNEL_MESSAGE_RECEIVED` | `channel_id`, `is_bot_message`, `is_thread_reply` filters |
-| `SLACK_RECEIVE_DIRECT_MESSAGE` | `SLACK_DIRECT_MESSAGE_RECEIVED` | Per-user authorization via `app_token` |
+| `SLACK_RECEIVE_MESSAGE` | `SLACK_CHANNEL_MESSAGE_RECEIVED` | Adds `channel_id`, `is_bot_message`, `is_thread_reply` filters |
+| `SLACK_RECEIVE_DIRECT_MESSAGE` | `SLACK_DIRECT_MESSAGE_RECEIVED` | Requires `app_token` for per-user authorization |
 
 ```bash
 curl -X POST "https://backend.composio.dev/api/v3/trigger_instances/SLACK_CHANNEL_MESSAGE_RECEIVED/upsert" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "connected_account_id": "<CONNECTED_ACCOUNT_ID>",
-    "trigger_config": {
-      "channel_id": "C_SUPPORT",
-      "is_bot_message": "false"
-    }
+    "connected_account_id": "CONNECTED_ACCOUNT_ID",
+    "trigger_config": { "channel_id": "C_SUPPORT", "is_bot_message": "false" }
   }'
 ```
 
-<Callout type="info">
-If you attempt to create a V2-only slug without first creating a `webhook_endpoint`, Apollo returns `400` with a `suggestedFix` pointing you to `POST /api/v3/webhook_endpoints`.
-</Callout>
+Creating a V2-only slug without a matching `webhook_endpoint` returns `400` with a `suggestedFix` pointing to `POST /api/v3/webhook_endpoints`.
 
----
+## Constraint: one OAuth app, one project
 
-## One OAuth App = One Project (important)
-
-The `webhook_endpoints` table keys uniqueness on `(toolkit_slug, project_id, client_id)`. More importantly, **the provider dashboard (Slack, HubSpot, Linear, etc.) only accepts one callback URL per OAuth app.**
+`webhook_endpoints` uniqueness is `(toolkit_slug, project_id, client_id)`. More importantly, the provider dashboard accepts exactly **one callback URL per OAuth app**, and each V2 URL resolves to a single project.
 
 <Callout type="warn">
-On V2, each OAuth app (`client_id`) can effectively be attached to a single Composio project. If you currently share one OAuth app across multiple projects or organizations on V1, you must choose one project to own that OAuth app when moving it to V2.
+An OAuth app (`client_id`) on V2 can effectively serve only one Composio project. If the same OAuth app is currently shared across multiple projects or organizations on V1, either pick one project to own it on V2 or register separate OAuth apps per project.
 </Callout>
 
-### Your options when a shared OAuth app wants V2 features
+Scoping V2 endpoints to a single project gives each project:
 
-1. **Consolidate** — pick a single project to own the OAuth app and run V2 there. Other projects can keep using the same OAuth app on V1 with no changes.
-2. **Create separate OAuth apps** — one per project that needs V2. This is the recommended long-term approach.
+- Its own ingress rate-limit and backpressure budget
+- Isolated fan-out — events reach only that project's trigger instances
+- Isolated signing secret and app-level token storage
+- Accurate per-project metering and billing
+- Independent teardown, rotation, and verification state
 
-### Why this constraint?
+V1's shared endpoint continues to work for any OAuth app left on V1, with no change in behavior.
 
-- **Per-project rate limits.** A shared OAuth app today means one noisy project can consume the entire OAuth app's ingress capacity. Scoping the endpoint to a single project gives every project its own budget.
-- **Clean fan-out.** Events are matched only to trigger instances on the project that owns the endpoint — no accidental cross-project delivery, no reference counting.
-- **Tenant-scoped security.** Signing secrets and app-level tokens live on a single project's endpoint row. There is no shared endpoint across projects or organizations that any tenant could read from or corrupt.
-- **Accurate billing and metering.** Webhook ingress volume is attributed unambiguously to the owning project.
-- **Deterministic lifecycle.** Teardown, rotation, and verification are unambiguous per-project operations.
+## Backward compatibility
 
-Again — **you are never forced to move to V2**. The shared V1 endpoint for existing OAuth apps keeps running indefinitely. You only encounter this constraint when you actively opt a project into V2 for a given OAuth app.
-
----
-
-## Backward Compatibility
-
-<Callout type="warn">
-**No existing trigger is touched by this release.** No URLs to change, no API changes, no data migrations on our end that touch your data.
-</Callout>
-
-### What Continues to Work
-
-- All existing trigger slugs on every toolkit (for Slack: `SLACK_RECEIVE_MESSAGE`, `SLACK_RECEIVE_DIRECT_MESSAGE`, `SLACK_RECEIVE_GROUP_MESSAGE`, `SLACKBOT_*`, and every other legacy slug)
-- The V1 ingress URL pattern (`/api/v3/trigger_instances/{toolkit}/{project_id}/handle`)
-- Existing `POST /trigger_instances/{slug}/upsert` setup flow — create auth_config, upsert trigger, done
-- All V1/V2/V3 webhook payload versions
-- Custom OAuth apps that share a `client_id` across projects — they continue working on V1 with no changes
-
-### What's Opt-In
-
-- Creating a `webhook_endpoint`
-- Switching your provider dashboard URL to the V2 ingress URL
-- Using new V2-only trigger slugs
-
----
+- V1 ingress (`/api/v3/trigger_instances/{toolkit}/{project_id}/handle`) is **not deprecated** and has no sunset date.
+- All existing trigger slugs — every `SLACK_RECEIVE_*`, `SLACKBOT_*`, and equivalent legacy slug across toolkits — continue to route through V1 unchanged.
+- No server-side data migration touches existing trigger instances.
+- V1, V2, and V3 outbound webhook payload formats are unaffected.
 
 ## Rollout
 
-- **2026-04-18 (today):** Webhook endpoints APIs, V2 ingress, signature verification, and the new Slack V2 slugs (`SLACK_CHANNEL_MESSAGE_RECEIVED`, `SLACK_DIRECT_MESSAGE_RECEIVED`) are live in production.
-- **Next:** We'll migrate HubSpot, Linear, and other app-level toolkits using the same pattern. Each migration ships with its own changelog entry.
-- **V1 sunset:** No date. V1 ingress and all V1 slugs continue to work indefinitely.
+- **2026-04-18** — `webhook_endpoints` APIs, V2 ingress, signature verification, and the Slack V2 slugs are live in production.
+- **Next** — HubSpot, Linear, and other app-level toolkits will migrate using the same pattern, each announced in its own changelog entry.
 
----
+## Support
 
-## FAQ
-
-**Do I have to change my Slack Event Subscriptions URL?**
-No. If you're happy with V1 behavior, leave it as-is. Only switch when you want V2 features.
-
-**Will my existing `SLACK_RECEIVE_MESSAGE` triggers keep firing?**
-Yes — with no change. They route through V1 exactly as they do today.
-
-**Can I mix V1 and V2 triggers under the same OAuth app?**
-Yes, on the same project. Once the dashboard URL is on V2, all events from that OAuth app flow through V2 ingress. Trigger instances on V1 slugs still match and fire; instances on V2 slugs additionally get filtering and per-user authorization.
-
-**My OAuth app is shared across 3 projects. What happens if I flip the URL to a V2 endpoint on one project?**
-Events from that OAuth app start flowing to the V2 endpoint on that one project. The other two projects stop receiving events from that app, because the provider only has one URL to send to. Either consolidate to one project, or create separate OAuth apps for the other projects.
-
-**What happens if my signing secret is wrong or missing?**
-Apollo rejects incoming requests with `401`. The provider retries with backoff and may disable your endpoint after repeated failures (~36h for Slack). Always store the secret before flipping the URL.
-
----
-
-## Need Help?
-
-- [Discord community](https://discord.gg/composio)
-- Email: support@composio.dev
+- [Discord](https://discord.gg/composio)
+- [support@composio.dev](mailto:support@composio.dev)
