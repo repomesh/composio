@@ -30,7 +30,7 @@ This replaces V1's shared `/handle` URL per toolkit. Events arriving on a V2 URL
 
 **Per-user authorization for app-level events.** On toolkits with per-user visibility — Slack being the first — V2 uses an app-level token (for Slack, an `xapp-…` token with `authorizations:read`) to resolve which connected users are authorized for a given event, so only those users' triggers fire. This underpins a new class of triggers for private channels, direct messages, and other per-recipient events, each routed only to the user the event was intended for.
 
-**Handshakes and lifecycle handled for you.** Composio automatically responds to provider verification challenges — Slack `url_verification`, Asana `X-Hook-Secret`, Outlook validation tokens, and so on — so callback URLs verify without any custom code on your side. Composio also deregisters user-level webhooks with the provider when the trigger is deleted.
+**Automatic handshakes and cleanup.** Composio responds to provider verification challenges — Slack `url_verification`, Asana `X-Hook-Secret`, Outlook validation tokens, and so on — so callback URLs verify without any custom code. User-level webhooks are also deregistered on the provider side when the trigger is deleted.
 
 ## API reference
 
@@ -91,9 +91,14 @@ Store the signing secret before switching the provider's callback URL. If Slack 
 
 Set **Event Subscriptions → Request URL** in your Slack app to the `webhook_url` returned in step 2. Slack issues a `url_verification` challenge; Composio responds automatically and sets `verified_at` on the endpoint.
 
-### 5. (Optional) Add an app-level token for private channel and DM triggers
+### 5. Add an app-level token for private-scope events
 
-Required only for triggers that need per-user authorization.
+The app-level token is what lets Composio resolve per-user authorization for Slack's private-scope events.
+
+- `SLACK_DIRECT_MESSAGE_RECEIVED` always requires it.
+- `SLACK_CHANNEL_MESSAGE_RECEIVED` requires it for events from **private channels** and **multi-person DMs**; public-channel messages are delivered without it.
+
+Skip this step if you only need public-channel messages today — you can add the token later.
 
 ```bash
 curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/ENDPOINT_ID" \
@@ -106,10 +111,10 @@ Generate the token from **Slack app → Basic Information → App-Level Tokens**
 
 ### 6. Create V2 trigger instances
 
-| V1 slug (still supported) | V2 replacement | Notes |
+| V1 slug (still supported) | V2 replacement | `app_token` required? |
 |---|---|---|
-| `SLACK_RECEIVE_MESSAGE` | `SLACK_CHANNEL_MESSAGE_RECEIVED` | Adds `channel_id`, `is_bot_message`, `is_thread_reply` filters |
-| `SLACK_RECEIVE_DIRECT_MESSAGE` | `SLACK_DIRECT_MESSAGE_RECEIVED` | Requires `app_token` for per-user authorization |
+| `SLACK_RECEIVE_MESSAGE` | `SLACK_CHANNEL_MESSAGE_RECEIVED` | Only for private channels and multi-person DMs; public channels work without it |
+| `SLACK_RECEIVE_DIRECT_MESSAGE` | `SLACK_DIRECT_MESSAGE_RECEIVED` | Always |
 
 ```bash
 curl -X POST "https://backend.composio.dev/api/v3/trigger_instances/SLACK_CHANNEL_MESSAGE_RECEIVED/upsert" \
