@@ -138,12 +138,12 @@ The provider dashboard accepts only one callback URL per OAuth app, and each V2 
 
 The signing secret also lives on the endpoint, so the reverse holds too: two different OAuth apps cannot share one V2 endpoint — Composio would only verify signatures from the app whose secret is on file.
 
-Project-scoped endpoints give each project:
+In return, every project graduates to a first-class webhook tenant on V2 — with its own:
 
-- A dedicated ingress rate-limit and backpressure budget
+- Ingress rate-limit and backpressure budget
 - Clean fan-out — events reach only that project's trigger instances
-- A signing secret and app-level token scoped to this project alone
-- Accurate per-project metering and billing
+- Signing secret and app-level token, scoped to this project alone
+- Per-project metering and billing
 
 Your V1 endpoints are unaffected. Any OAuth app you leave on V1 continues to work across projects exactly as it does today.
 
