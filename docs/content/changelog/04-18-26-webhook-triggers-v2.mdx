@@ -87,11 +87,7 @@ curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/ENDPOINT_ID
 Store the signing secret before switching the provider's callback URL. If Slack posts to a V2 URL without a secret available, every request fails with `400` and Slack may auto-disable the endpoint after ~36 hours of failures.
 </Callout>
 
-### 4. Point your Slack app at the V2 URL
-
-Set **Event Subscriptions → Request URL** in your Slack app to the `webhook_url` returned in step 2. Slack issues a `url_verification` challenge; Composio responds automatically and sets `verified_at` on the endpoint.
-
-### 5. Add an app-level token for private-scope events
+### 4. Add an app-level token for private-scope events
 
 The app-level token is what lets Composio resolve per-user authorization for Slack's private-scope events.
 
@@ -108,6 +104,10 @@ curl -X PATCH "https://backend.composio.dev/api/v3/webhook_endpoints/ENDPOINT_ID
 ```
 
 Generate the token from **Slack app → Basic Information → App-Level Tokens** with scope `authorizations:read`.
+
+### 5. Point your Slack app at the V2 URL
+
+Set **Event Subscriptions → Request URL** in your Slack app to the `webhook_url` returned in step 2. Composio verifies the endpoint with Slack automatically — no extra action needed on your side.
 
 ### 6. Create V2 trigger instances
 
