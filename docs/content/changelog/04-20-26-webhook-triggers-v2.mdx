@@ -1,7 +1,7 @@
 ---
 title: "Webhook Triggers V2"
 description: "Dedicated webhook endpoint per OAuth app, ingress-level signature verification, per-user authorization for private channels and DMs, and config-level event filters. Opt-in; V1 is unchanged."
-date: "2026-04-18"
+date: "2026-04-20"
 ---
 
 Webhook Triggers V2 introduces a first-class `webhook_endpoints` resource with a dedicated ingress URL per OAuth app. V2 is **opt-in** and scoped to new trigger slugs — existing V1 triggers, URLs, and payload formats are unchanged.
@@ -110,6 +110,8 @@ Generate the token from **Slack app → Basic Information → App-Level Tokens**
 Set **Event Subscriptions → Request URL** in your Slack app to the `webhook_url` returned in step 2. Composio verifies the endpoint with Slack automatically — no extra action needed on your side.
 
 ### 6. Create V2 trigger instances
+
+Two new Slack triggers ship on V2 — browse them on the [Slack toolkit page](https://platform.composio.dev/marketplace/slack) under **Triggers**, or use the table below to map them from your existing V1 slugs:
 
 | V1 slug (still supported) | V2 replacement | `app_token` required? |
 |---|---|---|
