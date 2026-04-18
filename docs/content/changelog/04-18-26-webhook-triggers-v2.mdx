@@ -26,7 +26,7 @@ https://backend.composio.dev/api/v3/webhook_ingress/{toolkit}/{we_xxx}/trigger_e
 
 This replaces V1's shared `/handle` URL per toolkit. Events arriving on a V2 URL are fanned out only to trigger instances on that endpoint's project.
 
-**Signature verification at ingress.** Apollo verifies HMAC-SHA256 (and Ed25519 or `token_match` where applicable) using the signing secret stored on the endpoint. Invalid payloads return `401` before any work is enqueued.
+**Signature verification at ingress.** Apollo cryptographically verifies every V2 request against the signing secret stored on the endpoint — HMAC-SHA256, Ed25519, or `token_match` depending on the toolkit. Unsigned or tampered payloads are rejected, so third parties cannot spoof events onto your triggers. For providers that sign a request timestamp (e.g. Slack), replay protection additionally rejects requests whose timestamp falls outside the allowed skew window.
 
 **Per-user authorization for app-level events.** Toolkits with per-user visibility — Slack being the first — can use an app-level token (e.g. `xapp-…` with `authorizations:read`) to resolve which connected users are authorized for a given event. Only those users' triggers fire. This enables safe delivery of private channel and DM events that V1 silently dropped.
 
