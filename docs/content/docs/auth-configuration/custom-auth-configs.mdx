@@ -98,6 +98,10 @@ Once you have the OAuth credentials, you can add them to the auth config in the 
 
 This auth config is now ready to be used in your application!
 
+<Callout type="info">
+The `initiate()` example below is **safe for custom auth configs**. The `initiate()` retirement announced in the [2026-04-24 changelog](/docs/changelog/2026/04/24) only affects **Composio-managed** auth configs on OAuth1 / OAuth2 / DCR_OAUTH — not the custom OAuth app you just configured here. Custom auth configs continue to work on `initiate()` indefinitely.
+</Callout>
+
 <Tabs groupId="language" items={['Python', 'TypeScript']} persist>
   <Tab value="Python">
 ```python
