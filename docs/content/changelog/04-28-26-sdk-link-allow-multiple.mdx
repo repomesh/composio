@@ -9,7 +9,7 @@ date: '2026-04-28'
 <Callout type="warn">
 **Behavior change**
 
-Before: `link()` would happily create a second `ACTIVE` connection for the same `(user_id, auth_config_id)` pair without a follow-up patch.
+Before: `link()` would happily create a second `ACTIVE` connection for the same `(user_id, auth_config_id)` pair without checking for an existing `ACTIVE` connection first.
 
 After: `link()` first calls `connectedAccounts.list({ userIds, authConfigIds, statuses: ['ACTIVE'] })`. If any active connection exists, `link()` throws `ComposioMultipleConnectedAccountsError` unless the caller passes `allowMultiple: true` (TypeScript) / `allow_multiple=True` (Python).
 </Callout>
