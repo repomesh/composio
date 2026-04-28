@@ -966,13 +966,14 @@ class TestToolRouter:
         session = tool_router.create(user_id="user_123")
         result = session.tools()
 
-        # Verify Tools was instantiated
+        # Verify Tools was instantiated (resolved flag; default ToolRouter is off)
         mock_tools_class.assert_called_once_with(
             client=mock_client,
             provider=mock_provider,
-            auto_upload_download_files=True,
+            dangerously_allow_auto_upload_download_files=False,
             sensitive_file_upload_protection=True,
             file_upload_path_deny_segments=None,
+            file_upload_dirs=None,
         )
 
         # Verify get_raw_tool_router_meta_tools was called
@@ -1267,7 +1268,7 @@ class TestToolRouterExecution:
         real_tools = RealTools(
             client=mock_client,
             provider=mock_provider,
-            auto_upload_download_files=False,
+            dangerously_allow_auto_upload_download_files=False,
         )
         execute_fn = real_tools._wrap_execute_tool_for_tool_router(
             session_id="session_123"
@@ -1318,7 +1319,7 @@ class TestToolRouterExecution:
         real_tools = RealTools(
             client=mock_client,
             provider=mock_provider,
-            auto_upload_download_files=False,
+            dangerously_allow_auto_upload_download_files=False,
         )
 
         modifiers = [
@@ -1361,7 +1362,7 @@ class TestToolRouterExecution:
         real_tools = RealTools(
             client=mock_client,
             provider=mock_provider,
-            auto_upload_download_files=False,
+            dangerously_allow_auto_upload_download_files=False,
         )
         execute_fn = real_tools._wrap_execute_tool_for_tool_router(
             session_id="session_123"
