@@ -6,18 +6,20 @@ Before the fix, ``CustomTool.__call__`` extracted ``user_id`` from the same
 ``**kwargs`` dict that carried LLM-supplied tool arguments, and
 ``CustomTools.execute`` happily forwarded that LLM-controlled dict via
 ``custom_tool(**request, user_id=user_id)``. An LLM (or prompt-injection
-input) could therefore set ``user_id`` to another tenant's identifier —
-either getting it forwarded into ``CustomTool.__call__`` directly or
-relying on Python's duplicate-kwarg ``TypeError`` to leak whose tokens
-were nearly looked up.
+input) could therefore set ``user_id`` to another tenant's identifier and
+have ``CustomTool.__get_auth_credentials`` look up that victim's OAuth
+tokens.
 
-The fix:
-    * ``CustomTools.execute`` strips ``user_id`` from the LLM-supplied
-      ``request`` dict at the trust boundary, so only the trusted, explicit
-      ``user_id`` parameter reaches the credential lookup.
-    * ``CustomTool.__call__`` exposes ``user_id`` as a keyword-only
-      parameter and drops any ``user_id`` left in ``kwargs`` before the
-      request body is validated.
+After the fix:
+    * ``CustomTools.execute`` filters the LLM-supplied ``request`` through
+      an *allowlist* of fields declared on the tool's Pydantic
+      ``request_model`` — ``user_id`` and any other unexpected key are
+      dropped before they can influence credential lookup or reach the
+      tool's execute function.
+    * ``CustomTool.invoke_trusted`` is the structurally separate trusted
+      entry point; ``user_id`` cannot be smuggled inside ``request_kwargs``.
+    * ``CustomTool.__call__`` raises ``TypeError`` if ``user_id`` appears
+      in ``kwargs`` rather than silently using a fallback.
 """
 
 from unittest.mock import MagicMock
@@ -33,9 +35,9 @@ class _IssueInput(BaseModel):
     issue_number: int = Field(description="GitHub issue number")
 
 
-def _make_mock_client() -> MagicMock:
-    """Build a mock HttpClient suitable for CustomTool.__get_auth_credentials."""
-
+@pytest.fixture
+def mock_http_client() -> MagicMock:
+    """Mock HttpClient that returns a single connected account on lookup."""
     state = MagicMock()
     state.val.model_dump.return_value = {"access_token": "trusted-token"}
 
@@ -52,144 +54,221 @@ def _make_mock_client() -> MagicMock:
     return client
 
 
-def test_execute_strips_user_id_from_llm_request() -> None:
-    """``CustomTools.execute`` MUST strip ``user_id`` from the request dict."""
-    client = _make_mock_client()
-    tools = CustomTools(client=client)
+@pytest.fixture
+def github_tool(mock_http_client: MagicMock) -> CustomTool:
+    """A registered ``github`` custom tool whose handler echoes the auth token."""
 
     def github_tool(request: _IssueInput, execute_request, auth_credentials):
         """Fetch issue info."""
-        return {"token": auth_credentials["access_token"]}
+        return {
+            "issue_number": request.issue_number,
+            "token": auth_credentials["access_token"],
+        }
 
-    tools.register(toolkit="github")(github_tool)
+    return CustomTool(f=github_tool, client=mock_http_client, toolkit="github")
 
-    result = tools.execute(
-        slug="GITHUB_GITHUB_TOOL",
+
+@pytest.fixture
+def custom_tools(mock_http_client: MagicMock, github_tool: CustomTool) -> CustomTools:
+    """A ``CustomTools`` registry pre-loaded with ``github_tool``."""
+    tools = CustomTools(client=mock_http_client)
+    tools.custom_tools_registry[github_tool.slug] = github_tool
+    return tools
+
+
+def test_execute_strips_user_id_from_llm_request(
+    mock_http_client: MagicMock, custom_tools: CustomTools, github_tool: CustomTool
+) -> None:
+    """``CustomTools.execute`` MUST drop ``user_id`` from the request dict."""
+    result = custom_tools.execute(
+        slug=github_tool.slug,
         request={"issue_number": 1, "user_id": "victim-user"},
         user_id="trusted-user",
     )
 
-    assert result == {"token": "trusted-token"}
-    # Only the trusted, explicit user_id reaches the credential lookup.
-    client.connected_accounts.list.assert_called_once_with(
+    assert result == {"issue_number": 1, "token": "trusted-token"}
+    mock_http_client.connected_accounts.list.assert_called_once_with(
         toolkit_slugs=["github"],
         user_ids=["trusted-user"],
     )
 
 
-def test_execute_falls_back_to_default_when_user_id_missing() -> None:
-    """If the caller forgets a trusted ``user_id``, fall back to ``"default"``.
+def test_execute_strips_unexpected_fields_via_allowlist(
+    mock_http_client: MagicMock, custom_tools: CustomTools, github_tool: CustomTool
+) -> None:
+    """The allowlist is durable: any non-declared key is dropped, not just user_id.
 
-    Specifically, ``execute`` must NOT silently use the LLM-supplied
-    ``user_id`` from ``request`` as a fallback — that would re-introduce
-    the SEC-365 vulnerability under a different code path.
+    Pins the allowlist behaviour so a future identity-bearing key in the
+    auth path (``tenant_id``, ``org_id``, ``connected_account_id``, …)
+    cannot re-introduce CWE-639 by being smuggled through ``request``.
     """
-    client = _make_mock_client()
-    tools = CustomTools(client=client)
+    captured: dict = {}
 
-    def github_tool(request: _IssueInput, execute_request, auth_credentials):
-        """Fetch issue info."""
+    def echo_tool(request: _IssueInput, execute_request, auth_credentials):
+        """Echo back the validated request."""
+        captured["fields"] = request.model_dump()
         return {"ok": True}
 
-    tools.register(toolkit="github")(github_tool)
+    tools = CustomTools(client=mock_http_client)
+    tool = CustomTool(f=echo_tool, client=mock_http_client, toolkit="github")
+    tools.custom_tools_registry[tool.slug] = tool
 
     tools.execute(
-        slug="GITHUB_GITHUB_TOOL",
+        slug=tool.slug,
+        request={
+            "issue_number": 1,
+            "user_id": "victim-user",
+            "tenant_id": "evil-tenant",
+            "connected_account_id": "ca_evil",
+            "extra_garbage": "xyz",
+        },
+        user_id="trusted-user",
+    )
+
+    assert captured["fields"] == {"issue_number": 1}
+    mock_http_client.connected_accounts.list.assert_called_once_with(
+        toolkit_slugs=["github"],
+        user_ids=["trusted-user"],
+    )
+
+
+def test_execute_keeps_aliases_declared_on_request_model(
+    mock_http_client: MagicMock,
+) -> None:
+    """Aliases declared on the request model are honoured by the allowlist."""
+
+    class _AliasedInput(BaseModel):
+        issue_number: int = Field(alias="issueNumber")
+
+    captured: dict = {}
+
+    def aliased_tool(request: _AliasedInput, execute_request, auth_credentials):
+        """Echo back the validated request."""
+        captured["fields"] = request.model_dump()
+        return {"ok": True}
+
+    tools = CustomTools(client=mock_http_client)
+    tool = CustomTool(f=aliased_tool, client=mock_http_client, toolkit="github")
+    tools.custom_tools_registry[tool.slug] = tool
+
+    tools.execute(
+        slug=tool.slug,
+        request={"issueNumber": 5, "user_id": "victim"},
+        user_id="trusted-user",
+    )
+
+    assert captured["fields"] == {"issue_number": 5}
+
+
+def test_execute_falls_back_to_default_when_user_id_missing(
+    mock_http_client: MagicMock, custom_tools: CustomTools, github_tool: CustomTool
+) -> None:
+    """If no trusted ``user_id`` is provided, ``execute`` MUST use ``"default"``.
+
+    Specifically, ``execute`` MUST NOT silently use the LLM-supplied
+    ``user_id`` from ``request`` as a fallback — that would re-introduce
+    SEC-365 under a different code path.
+    """
+    custom_tools.execute(
+        slug=github_tool.slug,
         request={"issue_number": 1, "user_id": "victim-user"},
         user_id=None,
     )
 
-    client.connected_accounts.list.assert_called_once_with(
+    mock_http_client.connected_accounts.list.assert_called_once_with(
         toolkit_slugs=["github"],
         user_ids=["default"],
     )
 
 
-def test_execute_does_not_mutate_caller_request_dict() -> None:
+def test_execute_does_not_mutate_caller_request_dict(
+    custom_tools: CustomTools, github_tool: CustomTool
+) -> None:
     """Sanitization MUST NOT mutate the caller's ``request`` dict in place."""
-    client = _make_mock_client()
-    tools = CustomTools(client=client)
-
-    def github_tool(request: _IssueInput, execute_request, auth_credentials):
-        """Fetch issue info."""
-        return {"ok": True}
-
-    tools.register(toolkit="github")(github_tool)
-
     request_dict = {"issue_number": 1, "user_id": "victim-user"}
-    tools.execute(
-        slug="GITHUB_GITHUB_TOOL",
+    custom_tools.execute(
+        slug=github_tool.slug,
         request=request_dict,
         user_id="trusted-user",
     )
 
-    # The original dict is untouched (the SDK should not surprise the caller).
     assert request_dict == {"issue_number": 1, "user_id": "victim-user"}
 
 
-def test_call_drops_user_id_smuggled_in_kwargs_dict() -> None:
-    """``CustomTool.__call__`` MUST ignore any ``user_id`` smuggled in kwargs.
+def test_call_raises_typeerror_when_user_id_smuggled_in_kwargs(
+    github_tool: CustomTool,
+) -> None:
+    """``CustomTool.__call__`` MUST refuse a ``user_id`` kwarg loudly.
 
-    A caller might unpack a partially-trusted dict like ``tool(**llm_dict)``
-    without realizing that the LLM controls every key in it. Before the fix,
-    a ``user_id`` key in that dict was popped and used to look up OAuth
-    credentials — letting an LLM read another tenant's tokens. After the fix,
-    ``__call__`` always uses the safe ``"default"`` user_id and the smuggled
-    value is dropped before request validation.
+    Silent fallbacks expand blast radius: a tool that quietly transacts
+    against ``"default"`` could end up using a real tenant who happens to
+    be registered under that id. Failing fast also surfaces prompt-injection
+    attempts instead of swallowing them.
     """
-    client = _make_mock_client()
-
-    def github_tool(request: _IssueInput, execute_request, auth_credentials):
-        """Fetch issue info."""
-        return {"ok": True}
-
-    tool = CustomTool(f=github_tool, client=client, toolkit="github")
-
     smuggled_kwargs = {"issue_number": 1, "user_id": "victim-user"}
-    tool(**smuggled_kwargs)
 
-    client.connected_accounts.list.assert_called_once_with(
-        toolkit_slugs=["github"],
-        user_ids=["default"],
+    with pytest.raises(TypeError, match="user_id"):
+        github_tool(**smuggled_kwargs)
+
+
+def test_invoke_trusted_uses_explicit_user_id_over_smuggled_one(
+    mock_http_client: MagicMock, github_tool: CustomTool
+) -> None:
+    """``invoke_trusted``'s explicit ``user_id`` MUST win over a smuggled key.
+
+    The auth-path argument is structurally separate from ``request_kwargs``,
+    so an LLM-controlled ``user_id`` inside ``request_kwargs`` cannot
+    override the trusted parameter. This pins the docstring contract.
+    """
+    github_tool.invoke_trusted(
+        user_id="trusted-user",
+        request_kwargs={"issue_number": 7, "user_id": "victim-user"},
     )
 
-
-def test_invoke_uses_trusted_user_id_separate_from_request() -> None:
-    """``_invoke`` takes ``user_id`` separately from the request dict.
-
-    This is the trusted internal entry point used by ``CustomTools.execute``.
-    Even if the LLM-controlled ``request_kwargs`` happens to contain a
-    ``user_id`` key (and somehow gets past the sanitization in ``execute``),
-    the ``user_id`` argument here is structurally separate, so the trusted
-    value is what reaches the credential lookup.
-    """
-    client = _make_mock_client()
-
-    captured: dict = {}
-
-    def github_tool(request: _IssueInput, execute_request, auth_credentials):
-        """Fetch issue info."""
-        captured["request"] = request
-        return {"ok": True}
-
-    tool = CustomTool(f=github_tool, client=client, toolkit="github")
-    tool._invoke(user_id="trusted-user", request_kwargs={"issue_number": 7})
-
-    client.connected_accounts.list.assert_called_once_with(
+    mock_http_client.connected_accounts.list.assert_called_once_with(
         toolkit_slugs=["github"],
         user_ids=["trusted-user"],
     )
-    assert captured["request"].issue_number == 7
 
 
-def test_execute_unknown_slug_raises() -> None:
+def test_execute_unknown_slug_raises(custom_tools: CustomTools) -> None:
     """Sanity check: unknown slugs still surface ``NotFoundError``."""
-    client = _make_mock_client()
-    tools = CustomTools(client=client)
-
     with pytest.raises(NotFoundError):
-        tools.execute(
+        custom_tools.execute(
             slug="DOES_NOT_EXIST",
             request={"foo": "bar"},
             user_id="trusted-user",
         )
+
+
+def test_tools_execute_e2e_strips_user_id_through_full_stack(
+    mock_http_client: MagicMock, custom_tools: CustomTools, github_tool: CustomTool
+) -> None:
+    """End-to-end check through ``Tools.execute`` (the public SDK entry point).
+
+    ``Tools._execute_tool`` routes custom-tool calls into
+    ``CustomTools.execute``. The modifier-hook block can also overwrite
+    ``arguments`` and ``user_id`` from a ``processed_params`` dict, so we
+    pin that the sanitization still applies after that path.
+    """
+    from composio.core.models.tools import Tools
+
+    provider = MagicMock()
+    provider.name = "test"
+
+    tools = Tools(client=mock_http_client, provider=provider)
+    tools._custom_tools = custom_tools
+
+    response = tools.execute(
+        slug=github_tool.slug,
+        arguments={"issue_number": 1, "user_id": "victim-user"},
+        user_id="trusted-user",
+    )
+
+    assert response["successful"] is True
+    assert response["data"]["issue_number"] == 1
+    assert response["data"]["token"] == "trusted-token"
+    mock_http_client.connected_accounts.list.assert_called_once_with(
+        toolkit_slugs=["github"],
+        user_ids=["trusted-user"],
+    )
