@@ -1,6 +1,173 @@
 import { z } from 'zod/v3';
-import { JsonSchemaToZodError } from '../errors';
+import { JsonSchemaRefResolutionError, JsonSchemaToZodError } from '../errors';
 import { jsonSchemaToZod } from '@composio/json-schema-to-zod';
+
+const MAX_REF_CHAIN_DEPTH = 100;
+const CYCLE_BREAK_SENTINEL = Object.freeze({ type: 'object', additionalProperties: true });
+const INTERNAL_REF_PREFIX = '#';
+
+const decodePointerSegment = (segment: string): string =>
+  segment.replace(/~1/g, '/').replace(/~0/g, '~');
+
+const resolvePointer = (
+  root: Record<string, unknown>,
+  pointer: string
+): { target: unknown; canonical: string } => {
+  if (pointer === '#' || pointer === '') {
+    return { target: root, canonical: '#' };
+  }
+  if (!pointer.startsWith('#/')) {
+    throw new JsonSchemaRefResolutionError(`Unsupported $ref pointer: ${pointer}`, {
+      meta: { ref: pointer },
+    });
+  }
+  const segments = pointer.slice(2).split('/').map(decodePointerSegment);
+  let cursor: unknown = root;
+  for (const segment of segments) {
+    if (cursor === null || typeof cursor !== 'object') {
+      throw new JsonSchemaRefResolutionError(`Cannot resolve $ref ${pointer}`, {
+        meta: { ref: pointer, failedAt: segment },
+      });
+    }
+    if (Array.isArray(cursor)) {
+      const index = Number(segment);
+      if (!Number.isInteger(index) || index < 0 || index >= cursor.length) {
+        throw new JsonSchemaRefResolutionError(`Cannot resolve $ref ${pointer}`, {
+          meta: { ref: pointer, failedAt: segment },
+        });
+      }
+      cursor = cursor[index];
+    } else {
+      const obj = cursor as Record<string, unknown>;
+      if (!Object.prototype.hasOwnProperty.call(obj, segment)) {
+        throw new JsonSchemaRefResolutionError(`Cannot resolve $ref ${pointer}`, {
+          meta: { ref: pointer, failedAt: segment },
+        });
+      }
+      cursor = obj[segment];
+    }
+  }
+  return { target: cursor, canonical: pointer };
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * Inlines internal JSON Schema `$ref` pointers (`#/$defs/...` and the
+ * legacy `#/definitions/...`) so the returned schema can be safely handed
+ * to consumers — like AJV in `@mastra/schema-compat` — that don't tolerate
+ * unresolved references.
+ *
+ * The traversal is reflective (no allow-list of JSON Schema keywords), so
+ * future applicators (`unevaluatedProperties`, `dependentSchemas`, …) are
+ * covered automatically. Sibling keywords next to `$ref` are shallow-merged
+ * per Draft 2020-12 semantics — the sibling wins on collision so a caller's
+ * `description` or `default` overrides the target's. Recursive `$ref`
+ * chains are broken with `{ type: 'object', additionalProperties: true }`,
+ * matching the upstream Mastra recommendation in
+ * {@link https://github.com/mastra-ai/mastra/issues/15341 mastra-ai/mastra#15341}.
+ *
+ * The input schema is not mutated: every node is deep-cloned. `$defs` and
+ * `definitions` are stripped from the returned root once everything
+ * reachable is inlined — AJV strict-mode otherwise complains about unused
+ * definitions.
+ *
+ * External `$ref` pointers (`http://`, `https://`, `file://`, …) are left
+ * untouched: the caller may forward them to a consumer that resolves them
+ * natively.
+ *
+ * @param schema - The JSON Schema to dereference. May be any plain object.
+ * @returns A new schema with internal `$ref` pointers inlined.
+ *
+ * @throws {JsonSchemaRefResolutionError} When an internal pointer is
+ * malformed, points at a missing target, or chains past the depth cap.
+ *
+ * @example
+ * ```ts
+ * dereferenceJsonSchema({
+ *   type: 'object',
+ *   properties: { user: { $ref: '#/$defs/User' } },
+ *   $defs: { User: { type: 'object', properties: { id: { type: 'string' } } } },
+ * });
+ * // {
+ * //   type: 'object',
+ * //   properties: {
+ * //     user: { type: 'object', properties: { id: { type: 'string' } } },
+ * //   },
+ * // }
+ * ```
+ */
+export function dereferenceJsonSchema<T = unknown>(schema: T): T {
+  if (!isPlainObject(schema)) return schema;
+
+  const root = schema as Record<string, unknown>;
+
+  const walk = (node: unknown, path: string[], depth: number): unknown => {
+    if (Array.isArray(node)) {
+      return node.map((item, index) => walk(item, [...path, String(index)], depth));
+    }
+    if (!isPlainObject(node)) return node;
+
+    if (typeof node.$ref === 'string') {
+      const ref = node.$ref;
+      // External refs are out of scope; leave them alone.
+      if (!ref.startsWith(INTERNAL_REF_PREFIX)) {
+        const cloned: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(node)) {
+          cloned[key] = walk(value, [...path, key], depth);
+        }
+        return cloned;
+      }
+
+      if (depth >= MAX_REF_CHAIN_DEPTH) {
+        throw new JsonSchemaRefResolutionError(
+          `JSON Schema $ref chain exceeded depth cap (${MAX_REF_CHAIN_DEPTH}): ${ref}`,
+          { meta: { ref } }
+        );
+      }
+
+      // Cycle detection: if `ref` already appears in the current path, this
+      // resolution would re-enter itself. Break the cycle.
+      if (path.includes(`@ref:${ref}`)) {
+        return { ...CYCLE_BREAK_SENTINEL };
+      }
+
+      const { target } = resolvePointer(root, ref);
+      const resolved = walk(target, [...path, `@ref:${ref}`], depth + 1);
+
+      // Shallow-merge sibling keywords (Draft 2020-12 semantics: siblings win
+      // on collision). Draft 7 ignores siblings entirely, but the Composio
+      // tool surface admits both drafts so we honor siblings for safety.
+      const { $ref: _omit, ...siblings } = node;
+      void _omit;
+      if (Object.keys(siblings).length === 0) {
+        return resolved;
+      }
+      if (!isPlainObject(resolved)) {
+        return resolved;
+      }
+      const merged: Record<string, unknown> = { ...resolved };
+      for (const [key, value] of Object.entries(siblings)) {
+        merged[key] = walk(value, [...path, key], depth);
+      }
+      return merged;
+    }
+
+    const cloned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(node)) {
+      cloned[key] = walk(value, [...path, key], depth);
+    }
+    return cloned;
+  };
+
+  const out = walk(root, [], 0);
+  if (isPlainObject(out)) {
+    delete out.$defs;
+    delete out.definitions;
+  }
+  return out as T;
+}
 
 /**
  * Removes all non-required properties from the schema
