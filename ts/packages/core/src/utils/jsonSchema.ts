@@ -1,11 +1,17 @@
 import { z } from 'zod/v3';
 import { JsonSchemaRefResolutionError, JsonSchemaToZodError } from '../errors';
 import { jsonSchemaToZod } from '@composio/json-schema-to-zod';
+import logger from './logger';
 import { isPlainObject } from './modifiers/FileToolModifier.utils.neutral';
 
 const MAX_REF_CHAIN_DEPTH = 100;
 const MAX_NODE_DEPTH = 512;
 const CYCLE_BREAK_SENTINEL = { type: 'object', additionalProperties: true } as const;
+const POLLUTING_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const REF_RESOLUTION_FIXES = [
+  'Ensure the $ref pointer matches a path in $defs or definitions',
+  'External $ref pointers (http://, https://, file://, …) are not resolved by the SDK',
+];
 
 const decodePointerSegment = (segment: string): string =>
   segment.replace(/~1/g, '/').replace(/~0/g, '~');
@@ -13,6 +19,7 @@ const decodePointerSegment = (segment: string): string =>
 const failResolution = (pointer: string, segment: string): never => {
   throw new JsonSchemaRefResolutionError(`Cannot resolve $ref ${pointer}`, {
     meta: { ref: pointer, failedAt: segment },
+    possibleFixes: REF_RESOLUTION_FIXES,
   });
 };
 
@@ -33,6 +40,7 @@ const resolvePointer = (root: Record<string, unknown>, pointer: string): unknown
   if (!pointer.startsWith('#/')) {
     throw new JsonSchemaRefResolutionError(`Unsupported $ref pointer: ${pointer}`, {
       meta: { ref: pointer },
+      possibleFixes: REF_RESOLUTION_FIXES,
     });
   }
   return pointer
@@ -93,6 +101,9 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
   const root = schema as Record<string, unknown>;
   const visiting = new WeakSet<object>();
 
+  // Filter `__proto__`/`constructor`/`prototype` keys to avoid altering the
+  // prototype of the cloned output node (which can break downstream
+  // `Object.keys` / `in` checks even though the global prototype is safe).
   const cloneChildren = (
     obj: Record<string, unknown>,
     visitedRefs: ReadonlySet<string>,
@@ -100,7 +111,9 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
     nodeDepth: number
   ): Record<string, unknown> =>
     Object.fromEntries(
-      Object.entries(obj).map(([k, v]) => [k, walk(v, visitedRefs, chainDepth, nodeDepth + 1)])
+      Object.entries(obj)
+        .filter(([k]) => !POLLUTING_KEYS.has(k))
+        .map(([k, v]) => [k, walk(v, visitedRefs, chainDepth, nodeDepth + 1)])
     );
 
   // Function declaration so `cloneChildren` can reference `walk` despite being
@@ -113,7 +126,8 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
   ): unknown {
     if (nodeDepth >= MAX_NODE_DEPTH) {
       throw new JsonSchemaRefResolutionError(
-        `JSON Schema node depth exceeded cap (${MAX_NODE_DEPTH})`
+        `JSON Schema node depth exceeded cap (${MAX_NODE_DEPTH})`,
+        { possibleFixes: REF_RESOLUTION_FIXES }
       );
     }
     if (Array.isArray(node)) {
@@ -132,13 +146,18 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
       const ref = typeof node.$ref === 'string' ? node.$ref : null;
       // External refs and non-$ref nodes both pass through the same clone path.
       if (ref === null || !ref.startsWith('#')) {
+        if (ref !== null) {
+          // Audit signal for security-sensitive deployments: a downstream
+          // resolver may fetch this and trigger SSRF or local-file disclosure.
+          logger.warn(`Leaving external $ref untouched: ${ref}`);
+        }
         return cloneChildren(node, visitedRefs, chainDepth, nodeDepth);
       }
 
       if (chainDepth >= MAX_REF_CHAIN_DEPTH) {
         throw new JsonSchemaRefResolutionError(
           `JSON Schema $ref chain exceeded depth cap (${MAX_REF_CHAIN_DEPTH}): ${ref}`,
-          { meta: { ref } }
+          { meta: { ref }, possibleFixes: REF_RESOLUTION_FIXES }
         );
       }
       if (visitedRefs.has(ref)) return { ...CYCLE_BREAK_SENTINEL };

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { dereferenceJsonSchema } from '../../src/utils/jsonSchema';
 import { JsonSchemaRefResolutionError } from '../../src/errors/ValidationErrors';
+import logger from '../../src/utils/logger';
 
 const containsRef = (value: unknown): boolean => {
   if (value === null || typeof value !== 'object') return false;
@@ -198,15 +199,41 @@ describe('dereferenceJsonSchema', () => {
     expect(out.properties.self).toEqual({ type: 'object', additionalProperties: true });
   });
 
-  it('leaves external $ref pointers untouched', () => {
+  it('leaves external $ref pointers untouched and warns once for audit', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      const out = dereferenceJsonSchema({
+        type: 'object',
+        properties: { v: { $ref: 'https://example.com/Foo' } },
+      });
+
+      expect((out as { properties: { v: { $ref: string } } }).properties.v.$ref).toBe(
+        'https://example.com/Foo'
+      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('https://example.com/Foo'));
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('filters prototype-pollution keys when cloning', () => {
     const out = dereferenceJsonSchema({
       type: 'object',
-      properties: { v: { $ref: 'https://example.com/Foo' } },
-    });
+      properties: {
+        v: { $ref: '#/$defs/User' },
+      },
+      $defs: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        User: { type: 'object', __proto__: { polluted: true } } as any,
+      },
+    } as Record<string, unknown>);
 
-    expect((out as { properties: { v: { $ref: string } } }).properties.v.$ref).toBe(
-      'https://example.com/Foo'
-    );
+    const v = (out as { properties: { v: Record<string, unknown> } }).properties.v;
+    expect('__proto__' in v && (v as Record<string, unknown>).__proto__).not.toEqual({
+      polluted: true,
+    });
+    // The cloned node's prototype should remain Object.prototype.
+    expect(Object.getPrototypeOf(v)).toBe(Object.prototype);
   });
 
   it('does not mutate the input schema', () => {
