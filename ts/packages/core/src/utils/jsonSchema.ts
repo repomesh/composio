@@ -1,6 +1,7 @@
 import { z } from 'zod/v3';
 import { JsonSchemaRefResolutionError, JsonSchemaToZodError } from '../errors';
 import { jsonSchemaToZod } from '@composio/json-schema-to-zod';
+import { isPlainObject } from './modifiers/FileToolModifier.utils.neutral';
 
 const MAX_REF_CHAIN_DEPTH = 100;
 const MAX_NODE_DEPTH = 512;
@@ -40,9 +41,6 @@ const resolvePointer = (root: Record<string, unknown>, pointer: string): unknown
     .map(decodePointerSegment)
     .reduce<unknown>((cursor, seg) => stepInto(cursor, seg, pointer), root);
 };
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /**
  * Inlines internal JSON Schema `$ref` pointers (`#/$defs/...` and the
