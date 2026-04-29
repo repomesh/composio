@@ -58,6 +58,11 @@ import { SessionExecuteParams } from '@composio/client/resources/tool-router.mjs
 import { CONFIG_DEFAULTS } from '../utils/config-defaults';
 import { resolveEffectiveUploadAllowlist } from '../utils/fileDirs';
 import { schemaHasFileUploadable } from '../utils/modifiers/FileToolModifier.utils.neutral';
+
+type SessionExecuteParamsWithAutoOffload = SessionExecuteParams & {
+  enable_auto_workbench_offload?: boolean;
+};
+
 /**
  * This class is used to manage tools in the Composio SDK.
  * It provides methods to list, get, and execute tools.
@@ -1035,9 +1040,12 @@ export class Tools<
       });
     }
 
-    const executePayload: SessionExecuteParams = {
+    const executePayload: SessionExecuteParamsWithAutoOffload = {
       tool_slug: toolSlug,
       arguments: modifiedParams,
+      // Provider-wrapped session tools are agentic calls, so they opt into
+      // direct tool offload when the backend session workbench allows it.
+      enable_auto_workbench_offload: true,
     };
 
     const response = await this.client.toolRouter.session.execute(body.sessionId, executePayload);
