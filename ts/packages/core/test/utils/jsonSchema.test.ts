@@ -170,6 +170,34 @@ describe('dereferenceJsonSchema', () => {
     ).toThrow(JsonSchemaRefResolutionError);
   });
 
+  it('throws JsonSchemaRefResolutionError on pathologically deep object nesting', () => {
+    // Build { properties: { x: { properties: { x: { ... } } } } } 1000 levels deep.
+    // Without a node-depth cap this would blow the V8 stack; with the cap, it throws
+    // a typed error before recursion grows unbounded.
+    type Nested = { type: 'object'; properties: { x: Nested | { type: 'string' } } };
+    let leaf: Nested | { type: 'string' } = { type: 'string' };
+    for (let i = 0; i < 1000; i++) {
+      leaf = { type: 'object', properties: { x: leaf } } as Nested;
+    }
+    expect(() => dereferenceJsonSchema(leaf)).toThrow(JsonSchemaRefResolutionError);
+  });
+
+  it('breaks JS object cycles that do not flow through a $ref', () => {
+    // Composio ingests schemas as live JS objects (custom tools, telemetry, …),
+    // so a non-$ref cycle is plausible. Without object-identity cycle detection
+    // this would infinite-loop; with it, the cycle returns the permissive sentinel.
+    const root: Record<string, unknown> = {
+      type: 'object',
+      properties: {},
+    };
+    (root.properties as Record<string, unknown>).self = root;
+
+    const out = dereferenceJsonSchema(root) as {
+      properties: { self: { type: string; additionalProperties: boolean } };
+    };
+    expect(out.properties.self).toEqual({ type: 'object', additionalProperties: true });
+  });
+
   it('leaves external $ref pointers untouched', () => {
     const out = dereferenceJsonSchema({
       type: 'object',

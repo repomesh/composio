@@ -3,6 +3,7 @@ import { JsonSchemaRefResolutionError, JsonSchemaToZodError } from '../errors';
 import { jsonSchemaToZod } from '@composio/json-schema-to-zod';
 
 const MAX_REF_CHAIN_DEPTH = 100;
+const MAX_NODE_DEPTH = 512;
 const CYCLE_BREAK_SENTINEL = Object.freeze({ type: 'object', additionalProperties: true });
 const INTERNAL_REF_PREFIX = '#';
 
@@ -102,66 +103,85 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
   if (!isPlainObject(schema)) return schema;
 
   const root = schema as Record<string, unknown>;
+  const visiting = new WeakSet<object>();
 
-  const walk = (node: unknown, path: string[], depth: number): unknown => {
+  const walk = (node: unknown, path: string[], depth: number, nodeDepth: number): unknown => {
+    if (nodeDepth >= MAX_NODE_DEPTH) {
+      throw new JsonSchemaRefResolutionError(
+        `JSON Schema node depth exceeded cap (${MAX_NODE_DEPTH})`
+      );
+    }
     if (Array.isArray(node)) {
-      return node.map((item, index) => walk(item, [...path, String(index)], depth));
+      if (visiting.has(node)) return { ...CYCLE_BREAK_SENTINEL };
+      visiting.add(node);
+      try {
+        return node.map((item, index) =>
+          walk(item, [...path, String(index)], depth, nodeDepth + 1)
+        );
+      } finally {
+        visiting.delete(node);
+      }
     }
     if (!isPlainObject(node)) return node;
-
-    if (typeof node.$ref === 'string') {
-      const ref = node.$ref;
-      // External refs are out of scope; leave them alone.
-      if (!ref.startsWith(INTERNAL_REF_PREFIX)) {
-        const cloned: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(node)) {
-          cloned[key] = walk(value, [...path, key], depth);
+    if (visiting.has(node)) return { ...CYCLE_BREAK_SENTINEL };
+    visiting.add(node);
+    try {
+      if (typeof node.$ref === 'string') {
+        const ref = node.$ref;
+        // External refs are out of scope; leave them alone.
+        if (!ref.startsWith(INTERNAL_REF_PREFIX)) {
+          const cloned: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(node)) {
+            cloned[key] = walk(value, [...path, key], depth, nodeDepth + 1);
+          }
+          return cloned;
         }
-        return cloned;
+
+        if (depth >= MAX_REF_CHAIN_DEPTH) {
+          throw new JsonSchemaRefResolutionError(
+            `JSON Schema $ref chain exceeded depth cap (${MAX_REF_CHAIN_DEPTH}): ${ref}`,
+            { meta: { ref } }
+          );
+        }
+
+        // Cycle detection: if `ref` already appears in the current path, this
+        // resolution would re-enter itself. Break the cycle.
+        if (path.includes(`@ref:${ref}`)) {
+          return { ...CYCLE_BREAK_SENTINEL };
+        }
+
+        const { target } = resolvePointer(root, ref);
+        const resolved = walk(target, [...path, `@ref:${ref}`], depth + 1, nodeDepth + 1);
+
+        // Shallow-merge sibling keywords (Draft 2020-12 semantics: siblings win
+        // on collision). Draft 7 ignores siblings entirely, but the Composio
+        // tool surface admits both drafts so we honor siblings for safety.
+        const { $ref: _omit, ...siblings } = node;
+        void _omit;
+        if (Object.keys(siblings).length === 0) {
+          return resolved;
+        }
+        if (!isPlainObject(resolved)) {
+          return resolved;
+        }
+        const merged: Record<string, unknown> = { ...resolved };
+        for (const [key, value] of Object.entries(siblings)) {
+          merged[key] = walk(value, [...path, key], depth, nodeDepth + 1);
+        }
+        return merged;
       }
 
-      if (depth >= MAX_REF_CHAIN_DEPTH) {
-        throw new JsonSchemaRefResolutionError(
-          `JSON Schema $ref chain exceeded depth cap (${MAX_REF_CHAIN_DEPTH}): ${ref}`,
-          { meta: { ref } }
-        );
+      const cloned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(node)) {
+        cloned[key] = walk(value, [...path, key], depth, nodeDepth + 1);
       }
-
-      // Cycle detection: if `ref` already appears in the current path, this
-      // resolution would re-enter itself. Break the cycle.
-      if (path.includes(`@ref:${ref}`)) {
-        return { ...CYCLE_BREAK_SENTINEL };
-      }
-
-      const { target } = resolvePointer(root, ref);
-      const resolved = walk(target, [...path, `@ref:${ref}`], depth + 1);
-
-      // Shallow-merge sibling keywords (Draft 2020-12 semantics: siblings win
-      // on collision). Draft 7 ignores siblings entirely, but the Composio
-      // tool surface admits both drafts so we honor siblings for safety.
-      const { $ref: _omit, ...siblings } = node;
-      void _omit;
-      if (Object.keys(siblings).length === 0) {
-        return resolved;
-      }
-      if (!isPlainObject(resolved)) {
-        return resolved;
-      }
-      const merged: Record<string, unknown> = { ...resolved };
-      for (const [key, value] of Object.entries(siblings)) {
-        merged[key] = walk(value, [...path, key], depth);
-      }
-      return merged;
+      return cloned;
+    } finally {
+      visiting.delete(node);
     }
-
-    const cloned: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(node)) {
-      cloned[key] = walk(value, [...path, key], depth);
-    }
-    return cloned;
   };
 
-  const out = walk(root, [], 0);
+  const out = walk(root, [], 0, 0);
   if (isPlainObject(out)) {
     delete out.$defs;
     delete out.definitions;
