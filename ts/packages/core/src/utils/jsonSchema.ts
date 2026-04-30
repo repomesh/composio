@@ -51,49 +51,15 @@ const resolvePointer = (root: Record<string, unknown>, pointer: string): unknown
 };
 
 /**
- * Inlines internal JSON Schema `$ref` pointers (`#/$defs/...` and the
- * legacy `#/definitions/...`) so the returned schema can be safely handed
- * to consumers — like AJV in `@mastra/schema-compat` — that don't tolerate
- * unresolved references.
+ * Inlines internal JSON Schema `$ref` pointers (`#/$defs/...` and legacy
+ * `#/definitions/...`) so the returned schema can be safely handed to
+ * consumers that don't tolerate unresolved references (e.g. AJV in
+ * `@mastra/schema-compat`). External (`http://`, `https://`, …) refs are
+ * left untouched. Cycles are broken with `{ type: 'object',
+ * additionalProperties: true }`. The input is never mutated.
  *
- * The traversal is reflective (no allow-list of JSON Schema keywords), so
- * future applicators (`unevaluatedProperties`, `dependentSchemas`, …) are
- * covered automatically. Sibling keywords next to `$ref` are shallow-merged
- * per Draft 2020-12 semantics — the sibling wins on collision so a caller's
- * `description` or `default` overrides the target's. Recursive `$ref`
- * chains are broken with `{ type: 'object', additionalProperties: true }`,
- * matching the upstream Mastra recommendation in
- * {@link https://github.com/mastra-ai/mastra/issues/15341 mastra-ai/mastra#15341}.
- *
- * The input schema is not mutated: every node is deep-cloned. `$defs` and
- * `definitions` are stripped from the returned root once everything
- * reachable is inlined — AJV strict-mode otherwise complains about unused
- * definitions.
- *
- * External `$ref` pointers (`http://`, `https://`, `file://`, …) are left
- * untouched: the caller may forward them to a consumer that resolves them
- * natively.
- *
- * @param schema - The JSON Schema to dereference. May be any plain object.
- * @returns A new schema with internal `$ref` pointers inlined.
- *
- * @throws {JsonSchemaRefResolutionError} When an internal pointer is
- * malformed, points at a missing target, or chains past the depth cap.
- *
- * @example
- * ```ts
- * dereferenceJsonSchema({
- *   type: 'object',
- *   properties: { user: { $ref: '#/$defs/User' } },
- *   $defs: { User: { type: 'object', properties: { id: { type: 'string' } } } },
- * });
- * // {
- * //   type: 'object',
- * //   properties: {
- * //     user: { type: 'object', properties: { id: { type: 'string' } } },
- * //   },
- * // }
- * ```
+ * @throws {JsonSchemaRefResolutionError} on malformed pointers, missing
+ * targets, or chains past the depth cap.
  */
 export function dereferenceJsonSchema<T = unknown>(schema: T): T {
   if (!isPlainObject(schema)) return schema;
@@ -101,9 +67,8 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
   const root = schema as Record<string, unknown>;
   const visiting = new WeakSet<object>();
 
-  // Filter `__proto__`/`constructor`/`prototype` keys to avoid altering the
-  // prototype of the cloned output node (which can break downstream
-  // `Object.keys` / `in` checks even though the global prototype is safe).
+  // POLLUTING_KEYS filter prevents an attacker-shaped $defs entry from altering
+  // the cloned node's prototype.
   const cloneChildren = (
     obj: Record<string, unknown>,
     visitedRefs: ReadonlySet<string>,
@@ -116,8 +81,7 @@ export function dereferenceJsonSchema<T = unknown>(schema: T): T {
         .map(([k, v]) => [k, walk(v, visitedRefs, chainDepth, nodeDepth + 1)])
     );
 
-  // Function declaration so `cloneChildren` can reference `walk` despite being
-  // declared earlier (function declarations are hoisted within the closure).
+  // `function` (not `const`) so `cloneChildren` above can call it via hoisting.
   function walk(
     node: unknown,
     visitedRefs: ReadonlySet<string>,
