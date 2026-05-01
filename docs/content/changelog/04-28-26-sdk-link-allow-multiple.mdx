@@ -4,7 +4,7 @@ description: 'TypeScript and Python `connectedAccounts.link()` now refuse to cre
 date: '2026-04-28'
 ---
 
-`composio.connectedAccounts.link()` (TypeScript) and `composio.connected_accounts.link()` (Python) now match the multi-connection guard that `initiate()` already had. With Composio-managed redirectable-OAuth callers being [migrated off `POST /api/v3/connected_accounts` onto `POST /api/v3/connected_accounts/link`](/docs/changelog/2026/04/24/link-auth-migration), the guard moves with them — so the migration doesn't quietly drop the duplicate-connection check.
+`composio.connectedAccounts.link()` (TypeScript) and `composio.connected_accounts.link()` (Python) now match the multi-connection guard that `initiate()` already had. With Composio-managed redirectable-OAuth callers being [migrated off `POST /api/v3/connected_accounts` onto `POST /api/v3/connected_accounts/link`](/docs/changelog/2026/04/24), the guard moves with them — so the migration doesn't quietly drop the duplicate-connection check.
 
 <Callout type="warn">
 **Behavior change**
@@ -52,9 +52,9 @@ const connectionRequest = await composio.connectedAccounts.link(
 </Tab>
 </Tabs>
 
-Pair with a session-level `multiAccount` / `multi_account` config so the agent can disambiguate at execution time. See [Configuring Sessions](/docs/configuring-sessions) for the session shape.
+Pair with a session-level `multiAccount` / `multi_account` config so the agent can disambiguate at execution time. See [Managing multiple connected accounts](/docs/managing-multiple-connected-accounts) for the session shape.
 
-**2. You're migrating from `initiate()` to `link()`** as part of the [Composio-managed OAuth migration](/docs/changelog/2026/04/24/link-auth-migration). Pass `allow_multiple` / `allowMultiple` through unchanged — same flag name, same default (`False`), same exception (`ComposioMultipleConnectedAccountsError`).
+**2. You're migrating from `initiate()` to `link()`** as part of the [Composio-managed OAuth migration](/docs/changelog/2026/04/24). Pass `allow_multiple` / `allowMultiple` through unchanged — same flag name, same default (`False`), same exception (`ComposioMultipleConnectedAccountsError`).
 
 ### Why
 
