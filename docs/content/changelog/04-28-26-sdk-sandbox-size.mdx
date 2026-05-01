@@ -31,12 +31,12 @@ The field is optional and defaults to `standard` server-side when omitted, so ex
 **TypeScript** (camelCase on the SDK surface):
 
 ```typescript
-// @noErrors
 import { Composio } from '@composio/core';
 const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY! });
 
 const session = await composio.create('user_123', {
   workbench: {
+    enable: true,
     sandboxSize: 'large',
   },
 });
