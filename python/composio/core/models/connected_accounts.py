@@ -23,7 +23,7 @@ from .base import Resource
 
 logger = logging.getLogger(__name__)
 
-# SEC-339: schemes that take the redirectable OAuth path on the legacy
+# Schemes that take the redirectable OAuth path on the legacy
 # `POST /api/v3/connected_accounts` endpoint, and so are subject to the
 # 2026-05-08 / 2026-07-03 retirement when the auth config is Composio-managed.
 _LEGACY_RETIRING_OAUTH_SCHEMES = frozenset({"OAUTH1", "OAUTH2", "DCR_OAUTH"})
@@ -474,10 +474,10 @@ class ConnectedAccounts:
                 ),
             )
         except BadRequestError as error:
-            # SEC-339: When the server has flipped this org to the retired
-            # path, the legacy endpoint returns 400 with a stable migration
-            # message. Surface it as a typed error so callers get an
-            # actionable hint instead of a generic BadRequestError.
+            # When the server has flipped this org to the retired path, the
+            # legacy endpoint returns 400 with a stable migration message.
+            # Surface it as a typed error so callers get an actionable hint
+            # instead of a generic BadRequestError.
             message = str(error)
             if (
                 "no longer supported" in message
@@ -488,9 +488,9 @@ class ConnectedAccounts:
                 ) from error
             raise
 
-        # SEC-339: Warn once per process when a successful initiate() lands
-        # on the redirectable-OAuth path. We can't tell from the response
-        # alone whether the auth config is Composio-managed (the field that
+        # Warn once per process when a successful initiate() lands on the
+        # redirectable-OAuth path. We can't tell from the response alone
+        # whether the auth config is Composio-managed (the field that
         # determines whether the cutover applies), so the warning text is
         # conditional in wording — custom-OAuth users can ignore it,
         # Composio-managed-OAuth users see a clear pointer to link() before
