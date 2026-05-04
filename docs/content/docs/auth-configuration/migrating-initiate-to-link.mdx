@@ -85,10 +85,6 @@ const connectedAccount = await connectionRequest.waitForConnection();
 | `allow_multiple` / `allowMultiple` | ✓ — guards against duplicates | ✓ — same default (`False`), same exception ([since 2026-04-28](/docs/changelog/2026/04/28)) |
 | Affected by the 2026-05-08 / 2026-07-03 retirement (Composio-managed OAuth) | Yes | No |
 
-## `allow_multiple` carries over unchanged
-
-`link()` accepts `allow_multiple` (Python) / `allowMultiple` (TypeScript) with the same default (`False`), same semantics, and same exception (`ComposioMultipleConnectedAccountsError`) as `initiate()`. Pass the flag through unchanged — see the [SDK link allow_multiple changelog](/docs/changelog/2026/04/28) for the full release note. Requires `@composio/core` v0.8.1+ (TypeScript) or `composio` v0.12.1+ (Python).
-
 ## How to know which auth config is which
 
 If you maintain a mix of Composio-managed and custom auth configs and aren't sure which path to take per call, look at the auth config record. The dashboard shows whether each config is "Default (Composio-managed)" or "Custom". Programmatically, the auth config retrieve response includes an `is_composio_managed` (Python) / `isComposioManaged` (TS) boolean. Route the call based on that field:
