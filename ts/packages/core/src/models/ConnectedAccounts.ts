@@ -45,7 +45,7 @@ import {
 import logger from '../utils/logger';
 import { ConnectionData } from '../types/connectedAccountAuthStates.types';
 
-// SEC-339: schemes that take the redirectable OAuth path on the legacy
+// Schemes that take the redirectable OAuth path on the legacy
 // `POST /api/v3/connected_accounts` endpoint, and so are subject to the
 // 2026-05-08 / 2026-07-03 retirement when the auth config is Composio-managed.
 const LEGACY_RETIRING_OAUTH_SCHEMES = new Set(['OAUTH1', 'OAUTH2', 'DCR_OAUTH']);
@@ -232,10 +232,10 @@ export class ConnectedAccounts {
     try {
       response = await this.client.connectedAccounts.create(createParams);
     } catch (error) {
-      // SEC-339: When the server has flipped this org to the retired path,
-      // the legacy endpoint returns 400 with a stable migration message.
-      // Surface it as a typed error so callers get an actionable hint instead
-      // of a generic BadRequestError.
+      // When the server has flipped this org to the retired path, the legacy
+      // endpoint returns 400 with a stable migration message. Surface it as
+      // a typed error so callers get an actionable hint instead of a generic
+      // BadRequestError.
       if (
         error instanceof BadRequestError &&
         typeof error.message === 'string' &&
@@ -249,12 +249,12 @@ export class ConnectedAccounts {
       throw error;
     }
 
-    // SEC-339: Warn once per process when a successful initiate() lands on
-    // the redirectable-OAuth path. We can't tell from the response alone
-    // whether the auth config is Composio-managed (the field that determines
-    // whether the cutover applies), so the warning text is conditional in
-    // wording — custom-OAuth users can ignore it, Composio-managed-OAuth
-    // users see a clear pointer to link() before their org's cutover lands.
+    // Warn once per process when a successful initiate() lands on the
+    // redirectable-OAuth path. We can't tell from the response alone whether
+    // the auth config is Composio-managed (the field that determines whether
+    // the cutover applies), so the warning text is conditional in wording —
+    // custom-OAuth users can ignore it, Composio-managed-OAuth users see a
+    // clear pointer to link() before their org's cutover lands.
     const responseAuthScheme = response.connectionData?.authScheme;
     if (
       !_legacyInitiateWarningEmitted &&
