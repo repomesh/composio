@@ -83,7 +83,7 @@ const connectedAccount = await connectionRequest.waitForConnection();
 | `alias` | ✓ | ✓ |
 | Pre-filled connection state (`config`) | ✓ — for non-OAuth schemes | Not needed — OAuth uses redirect; non-OAuth users keep `initiate()` |
 | `allow_multiple` / `allowMultiple` guard | ✓ | ✗ — handle client-side (see below) |
-| Subject to SEC-339 retirement (Composio-managed OAuth) | Yes | No |
+| Affected by the 2026-05-08 / 2026-07-03 retirement (Composio-managed OAuth) | Yes | No |
 
 ## Handling `allow_multiple`
 
