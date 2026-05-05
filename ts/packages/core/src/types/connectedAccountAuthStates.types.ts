@@ -8,6 +8,7 @@ export const ConnectionStatuses = {
   FAILED: 'FAILED',
   EXPIRED: 'EXPIRED',
   INACTIVE: 'INACTIVE',
+  REVOKED: 'REVOKED',
 } as const;
 export type ConnectionStatusEnum = (typeof ConnectionStatuses)[keyof typeof ConnectionStatuses];
 
@@ -144,6 +145,15 @@ export const Oauth2InactiveConnectionDataSchema = Oauth2InitiatingConnectionData
     .describe('for slack user scopes'),
 }).catchall(z.unknown());
 
+// Mirrors `Oauth2RevokedConnectionDataSchema` on the Apollo side
+// (`apps/apollo/src/lib/connected_accounts/schemes/connectionDataScheme.ts`):
+// shape matches the INITIATING schema with a status literal, plus an
+// optional `revoked_at` timestamp.
+export const Oauth2RevokedConnectionDataSchema = Oauth2InitiatingConnectionDataSchema.extend({
+  status: z.literal(ConnectionStatuses.REVOKED),
+  revoked_at: z.string().optional(),
+}).catchall(z.unknown());
+
 export const Oauth2ConnectionDataSchema = z.discriminatedUnion('status', [
   Oauth2InitiatingConnectionDataSchema,
   Oauth2InitiatedConnectionDataSchema,
@@ -151,6 +161,7 @@ export const Oauth2ConnectionDataSchema = z.discriminatedUnion('status', [
   Oauth2FailedConnectionDataSchema,
   Oauth2ExpiredConnectionDataSchema,
   Oauth2InactiveConnectionDataSchema,
+  Oauth2RevokedConnectionDataSchema,
 ]);
 
 export const CustomOauth2ConnectionDataSchema = Oauth2ActiveConnectionDataSchema.omit({
@@ -163,6 +174,7 @@ export type Oauth2ActiveConnectionData = z.infer<typeof Oauth2ActiveConnectionDa
 export type Oauth2FailedConnectionData = z.infer<typeof Oauth2FailedConnectionDataSchema>;
 export type Oauth2ExpiredConnectionData = z.infer<typeof Oauth2ExpiredConnectionDataSchema>;
 export type Oauth2InactiveConnectionData = z.infer<typeof Oauth2InactiveConnectionDataSchema>;
+export type Oauth2RevokedConnectionData = z.infer<typeof Oauth2RevokedConnectionDataSchema>;
 export type Oauth2ConnectionData = z.infer<typeof Oauth2ConnectionDataSchema>;
 export type CustomOauth2ConnectionData = z.infer<typeof CustomOauth2ConnectionDataSchema>;
 
