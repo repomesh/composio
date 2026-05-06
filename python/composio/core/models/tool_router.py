@@ -226,24 +226,19 @@ class ToolRouterPreloadConfig(te.TypedDict, total=False):
 
 
 class _SessionPreloadLike(te.Protocol):
-    tools: t.Union[t.List[str], t.Literal["all"], None]
-
-
-class _SessionConfigLike(te.Protocol):
-    preload: _SessionPreloadLike
-
-
-class _SessionWithPreloadConfig(te.Protocol):
-    config: _SessionConfigLike
+    @property
+    def tools(self) -> t.Union[t.List[str], str, None]: ...
 
 
 def _session_preload_config(
-    session: _SessionWithPreloadConfig,
+    preload: _SessionPreloadLike,
 ) -> ToolRouterSessionPreloadConfig:
-    tools = session.config.preload.tools
-    return ToolRouterSessionPreloadConfig(
-        tools=tools if isinstance(tools, str) else list(tools or [])
-    )
+    tools = preload.tools
+    if tools == "all":
+        return ToolRouterSessionPreloadConfig(tools="all")
+    if isinstance(tools, list):
+        return ToolRouterSessionPreloadConfig(tools=t.cast(t.List[str], tools))
+    return ToolRouterSessionPreloadConfig(tools=[])
 
 
 def _apply_session_preset_defaults(
@@ -925,9 +920,9 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                         "custom_tools"
                     ]
                 if "custom_toolkits" in experimental_payload:
-                    inline_custom_tools_payload["custom_toolkits"] = experimental_payload[
-                        "custom_toolkits"
-                    ]
+                    inline_custom_tools_payload["custom_toolkits"] = (
+                        experimental_payload["custom_toolkits"]
+                    )
 
             if experimental_payload:
                 create_params["experimental"] = experimental_payload
@@ -981,7 +976,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             experimental=experimental_response,
             custom_tools_map=custom_tools_map,
             user_id=user_id,
-            preload=_session_preload_config(session),
+            preload=_session_preload_config(session.config.preload),
             preloaded_custom_tool_slugs=preloaded_custom_tool_slugs,
             inline_custom_tools_payload=inline_custom_tools_payload,
         )
@@ -1038,7 +1033,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                 url=session.mcp.url,
             ),
             experimental=experimental_response,
-            preload=_session_preload_config(session),
+            preload=_session_preload_config(session.config.preload),
         )
 
 
