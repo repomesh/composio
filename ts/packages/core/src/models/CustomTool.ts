@@ -32,8 +32,8 @@ import {
   type CustomToolExecuteFn,
   type CustomToolsMap,
   type CustomToolsMapEntry,
-  type CustomToolDefinition,
-  type CustomToolkitDefinition,
+  type CustomToolWireDefinition,
+  type CustomToolkitWireDefinition,
   type InputParamsSchema,
 } from '../types/customTool.types';
 import type { SessionCreateResponse } from '@composio/client/resources/tool-router/session/session.mjs';
@@ -184,6 +184,7 @@ export function createCustomTool<T extends z.ZodType>(
     name: validated.name,
     description: validated.description,
     extendsToolkit: validated.extendsToolkit,
+    preload: validated.preload,
     inputSchema,
     outputSchema,
     inputParams,
@@ -250,6 +251,7 @@ export function createCustomToolkit(
     slug: slugResult.data,
     name: validated.name,
     description: validated.description,
+    preload: validated.preload,
     tools: options.tools,
   };
 }
@@ -340,7 +342,36 @@ export function buildCustomToolsMap(
  * @param tools - The custom tools to serialize
  * @returns Array of CustomToolDefinition for the API payload
  */
-export function serializeCustomTools(tools: CustomTool[]): CustomToolDefinition[] {
+type CustomToolSerializationOptions = {
+  defaultPreload?: boolean;
+};
+
+function shouldSerializePreload(
+  preload: boolean | undefined,
+  inheritedPreload: boolean | undefined,
+  defaultPreload: boolean
+): boolean | undefined {
+  const resolved = preload ?? inheritedPreload ?? defaultPreload;
+  if (preload !== undefined || inheritedPreload !== undefined || defaultPreload) {
+    return resolved;
+  }
+  return undefined;
+}
+
+function preloadWireProperty(
+  preload: boolean | undefined,
+  inheritedPreload: boolean | undefined,
+  defaultPreload: boolean
+): { preload?: boolean } {
+  const serializedPreload = shouldSerializePreload(preload, inheritedPreload, defaultPreload);
+  return serializedPreload === undefined ? {} : { preload: serializedPreload };
+}
+
+export function serializeCustomTools(
+  tools: CustomTool[],
+  options: CustomToolSerializationOptions = {}
+): CustomToolWireDefinition[] {
+  const defaultPreload = options.defaultPreload ?? false;
   return tools.map(handle => ({
     slug: handle.slug,
     name: handle.name,
@@ -348,6 +379,7 @@ export function serializeCustomTools(tools: CustomTool[]): CustomToolDefinition[
     input_schema: handle.inputSchema,
     ...(handle.outputSchema ? { output_schema: handle.outputSchema } : {}),
     ...(handle.extendsToolkit ? { extends_toolkit: handle.extendsToolkit } : {}),
+    ...preloadWireProperty(handle.preload, undefined, defaultPreload),
   }));
 }
 
@@ -358,17 +390,23 @@ export function serializeCustomTools(tools: CustomTool[]): CustomToolDefinition[
  * @param toolkits - The custom toolkits to serialize
  * @returns Array of CustomToolkitDefinition for the API payload
  */
-export function serializeCustomToolkits(toolkits: CustomToolkit[]): CustomToolkitDefinition[] {
+export function serializeCustomToolkits(
+  toolkits: CustomToolkit[],
+  options: CustomToolSerializationOptions = {}
+): CustomToolkitWireDefinition[] {
+  const defaultPreload = options.defaultPreload ?? false;
   return toolkits.map(tk => ({
     slug: tk.slug,
     name: tk.name,
     description: tk.description,
+    ...preloadWireProperty(tk.preload, undefined, defaultPreload),
     tools: tk.tools.map(t => ({
       slug: t.slug,
       name: t.name,
       description: t.description,
       input_schema: t.inputSchema,
       ...(t.outputSchema ? { output_schema: t.outputSchema } : {}),
+      ...preloadWireProperty(t.preload, tk.preload, defaultPreload),
     })),
   }));
 }
@@ -452,28 +490,62 @@ export function findCustomToolMapEntryByFinalSlug(
 }
 
 /**
- * Resolve custom tools that the backend selected for direct preload.
+ * Reject legacy attempts to preload custom tools through top-level preload.tools.
  *
- * The backend is the source of truth for preload expansion, including "all".
- * The SDK only keeps the final custom slugs it can serve locally because
- * the session tools endpoint only returns backend-managed tool schemas.
+ * Custom tool direct exposure is controlled by CustomTool.preload /
+ * CustomToolkit.preload so it follows the current SDK-provided custom
+ * definitions instead of stale session config.
+ *
+ * @internal
+ */
+export function assertNoCustomToolSlugsInPreload(
+  preloadTools: readonly string[] | 'all' | undefined,
+  customToolsMap: CustomToolsMap | undefined
+): void {
+  if (!preloadTools || preloadTools === 'all') {
+    return;
+  }
+
+  const customPreloadSlugs = preloadTools.filter(slug => {
+    const normalized = slug.toUpperCase();
+    return (
+      normalized.startsWith(LOCAL_TOOL_PREFIX) ||
+      customToolsMap?.byOriginalSlug.has(normalized) ||
+      customToolsMap?.byFinalSlug.has(normalized)
+    );
+  });
+
+  if (customPreloadSlugs.length) {
+    throw new ValidationError(
+      `Custom tool slugs are not supported in preload.tools: ${customPreloadSlugs.join(
+        ', '
+      )}. Set preload: true on the SDK custom tool or custom toolkit definition instead.`
+    );
+  }
+}
+
+/**
+ * Resolve custom tools that the SDK should expose directly from session.tools().
  *
  * @internal
  */
 export function getPreloadedCustomToolSlugs(
-  toolRouterTools: readonly string[] | undefined,
-  customToolsMap: CustomToolsMap | undefined
+  customToolsMap: CustomToolsMap | undefined,
+  defaultPreload = false
 ): string[] {
-  if (!toolRouterTools?.length || !customToolsMap) {
+  if (!customToolsMap) {
     return [];
   }
 
   const seen = new Set<string>();
   const customToolSlugs: string[] = [];
 
-  for (const slug of toolRouterTools) {
-    const entry = findCustomToolMapEntryByFinalSlug(customToolsMap, slug);
-    if (!entry) {
+  for (const entry of customToolsMap.byFinalSlug.values()) {
+    const toolkit = customToolsMap.toolkits?.find(
+      tk => entry.toolkit && tk.slug.toLowerCase() === entry.toolkit.toLowerCase()
+    );
+    const shouldPreload = entry.handle.preload ?? toolkit?.preload ?? defaultPreload;
+    if (!shouldPreload) {
       continue;
     }
 

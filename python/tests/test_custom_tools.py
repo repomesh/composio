@@ -12,6 +12,7 @@ Covers:
 - Multi-execute routing (all-local, all-remote, mixed, parallel)
 """
 
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 import pytest
@@ -144,6 +145,14 @@ class TestDecoratorTool:
             return {}
 
         assert fetch_mail.extends_toolkit == "gmail"
+
+    def test_decorator_with_preload(self):
+        @exp.tool(preload=True)
+        def fetch_context(input: GrepInput, ctx):
+            """Fetch context."""
+            return {}
+
+        assert fetch_context.preload is True
 
     def test_decorator_explicit_overrides(self):
         @exp.tool(slug="CUSTOM", name="Custom Name", description="Custom desc")
@@ -408,11 +417,22 @@ class TestSerialization:
         result = serialize_custom_tools([email_tool])
         assert result[0]["extends_toolkit"] == "gmail"
 
+    def test_serialize_custom_tool_preload_hint(self, grep_tool):
+        preloaded = replace(grep_tool, preload=True)
+        result = serialize_custom_tools([preloaded])
+        assert result[0]["preload"] is True
+
     def test_serialize_toolkit(self, role_toolkit):
         result = serialize_custom_toolkits([role_toolkit])
         assert len(result) == 1
         assert result[0]["slug"] == "ROLE_MANAGER"
         assert len(result[0]["tools"]) == 1
+
+    def test_serialize_toolkit_preload_hint(self, role_toolkit):
+        role_toolkit.preload = True
+        result = serialize_custom_toolkits([role_toolkit])
+        assert result[0]["preload"] is True
+        assert result[0]["tools"][0]["preload"] is True
 
 
 # ────────────────────────────────────────────────────────────────

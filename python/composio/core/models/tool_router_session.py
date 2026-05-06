@@ -105,6 +105,7 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
         user_id: t.Optional[str] = None,
         preload: t.Optional[ToolRouterSessionPreloadConfig] = None,
         preloaded_custom_tool_slugs: t.Optional[t.List[str]] = None,
+        inline_custom_tools_payload: t.Optional[t.Dict[str, t.Any]] = None,
     ) -> None:
         self._client = client
         self._provider = provider
@@ -119,6 +120,7 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
         self._custom_tools_map = custom_tools_map
         self._user_id = user_id
         self._preloaded_custom_tool_slugs = preloaded_custom_tool_slugs or []
+        self._inline_custom_tools_payload = inline_custom_tools_payload
 
         # Create singleton session context if custom tools are bound
         self._session_context: t.Optional[SessionContextImpl] = None
@@ -634,11 +636,14 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
 
         Returns relevant tools for the given query with schemas and guidance.
         """
-        return self._client.tool_router.session.search(
-            session_id=self.session_id,
-            queries=[{"use_case": query}],
-            model=model if model else omit,
-        )
+        params: t.Dict[str, t.Any] = {
+            "session_id": self.session_id,
+            "queries": [{"use_case": query}],
+            "model": model if model else omit,
+        }
+        if self._inline_custom_tools_payload is not None:
+            params["experimental"] = self._inline_custom_tools_payload
+        return self._client.tool_router.session.search(**params)
 
     def execute(
         self,
@@ -676,12 +681,15 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
             )
 
         # Remote execution
-        return self._client.tool_router.session.execute(
-            session_id=self.session_id,
-            tool_slug=tool_slug,
-            arguments=arguments if arguments is not None else omit,
-            account=account if account is not None else omit,
-        )
+        params: t.Dict[str, t.Any] = {
+            "session_id": self.session_id,
+            "tool_slug": tool_slug,
+            "arguments": arguments if arguments is not None else omit,
+            "account": account if account is not None else omit,
+        }
+        if self._inline_custom_tools_payload is not None:
+            params["experimental"] = self._inline_custom_tools_payload
+        return self._client.tool_router.session.execute(**params)
 
     def custom_tools(
         self, *, toolkit: t.Optional[str] = None

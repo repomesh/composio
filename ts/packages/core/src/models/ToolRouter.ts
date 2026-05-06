@@ -45,6 +45,8 @@ import {
 } from '../lib/toolRouterParams';
 import { ToolRouterSession } from './ToolRouterSession';
 import {
+  assertNoCustomToolSlugsInPreload,
+  buildCustomToolsMap,
   buildCustomToolsMapFromResponse,
   getPreloadedCustomToolSlugs,
   serializeCustomTools,
@@ -111,6 +113,9 @@ export class ToolRouter<
    *   },
    * });
    *
+   * // Custom tools are searched by default. Set `preload: true` on a custom
+   * // tool or toolkit to expose it directly from `session.tools()`.
+   *
    * // Expose all tools allowed by filters directly, without meta/helper tools.
    * // `preload.tools = "all"` requires a positive filter such as `toolkits`.
    * const directSession = await composio.create('user_123', {
@@ -129,6 +134,12 @@ export class ToolRouter<
     // Extract custom tools/toolkits from experimental config
     const customTools = routerConfig.experimental?.customTools;
     const customToolkits = routerConfig.experimental?.customToolkits;
+    const defaultCustomPreload = routerConfig.preload?.tools === 'all';
+    const localCustomToolsMap =
+      customTools?.length || customToolkits?.length
+        ? buildCustomToolsMap(customTools ?? [], customToolkits)
+        : undefined;
+    assertNoCustomToolSlugsInPreload(routerConfig.preload?.tools, localCustomToolsMap);
 
     // Build the typed experimental payload for the backend
     const experimentalPayload: SessionCreateParams['experimental'] = {};
@@ -140,11 +151,22 @@ export class ToolRouter<
     }
 
     if (customTools?.length) {
-      experimentalPayload.custom_tools = serializeCustomTools(customTools);
+      experimentalPayload.custom_tools = serializeCustomTools(customTools, {
+        defaultPreload: defaultCustomPreload,
+      });
     }
     if (customToolkits?.length) {
-      experimentalPayload.custom_toolkits = serializeCustomToolkits(customToolkits);
+      experimentalPayload.custom_toolkits = serializeCustomToolkits(customToolkits, {
+        defaultPreload: defaultCustomPreload,
+      });
     }
+    const inlineCustomToolsPayload =
+      experimentalPayload.custom_tools || experimentalPayload.custom_toolkits
+        ? {
+            custom_tools: experimentalPayload.custom_tools,
+            custom_toolkits: experimentalPayload.custom_toolkits,
+          }
+        : undefined;
 
     const multiAccountPayload = transformToolRouterMultiAccountParams(routerConfig.multiAccount);
 
@@ -182,10 +204,8 @@ export class ToolRouter<
     }
     const metadata = {
       ...getSessionMetadata(session),
-      preloadedCustomToolSlugs: getPreloadedCustomToolSlugs(
-        session.tool_router_tools,
-        customToolsMap
-      ),
+      preloadedCustomToolSlugs: getPreloadedCustomToolSlugs(customToolsMap, defaultCustomPreload),
+      inlineCustomToolsPayload,
     };
 
     const assistivePrompt = session.experimental?.assistive_prompt;

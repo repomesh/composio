@@ -7,6 +7,7 @@ import type { SessionCreateResponse } from '@composio/client/resources/tool-rout
 import type {
   CustomTool,
   CustomToolkit,
+  InlineCustomToolsWirePayload,
   RegisteredCustomTool,
   RegisteredCustomToolkit,
 } from './customTool.types';
@@ -575,6 +576,7 @@ export interface ToolRouterSessionMetadata {
   configVersion?: number;
   warnings?: ToolRouterSessionWarning[];
   preloadedCustomToolSlugs?: string[];
+  inlineCustomToolsPayload?: InlineCustomToolsWirePayload;
 }
 
 export const SessionProxyExecuteParamsSchema = z.object({

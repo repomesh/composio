@@ -106,6 +106,7 @@ class CustomTool:
     execute: CustomToolExecuteFn
     extends_toolkit: t.Optional[str] = None
     output_schema: t.Optional[t.Dict[str, t.Any]] = None
+    preload: t.Optional[bool] = None
 
 
 # ────────────────────────────────────────────────────────────────

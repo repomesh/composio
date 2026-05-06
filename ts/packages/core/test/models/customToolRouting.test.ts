@@ -166,6 +166,25 @@ describe('ToolRouter.create() with customTools', () => {
     expect(payload.experimental.custom_tools[0].extends_toolkit).toBe('meta_ads');
   });
 
+  it('should send custom tool preload hints under experimental', async () => {
+    const preloadedTool = createCustomTool('PINNED_CONTEXT', {
+      name: 'Pinned context',
+      description: 'Retrieve pinned user context',
+      preload: true,
+      inputParams: z.object({}),
+      execute: localExecute,
+    });
+
+    await router.create('user_1', {
+      experimental: {
+        customTools: [preloadedTool],
+      },
+    });
+
+    const payload = mockClient.toolRouter.session.create.mock.calls[0][0];
+    expect(payload.experimental.custom_tools[0].preload).toBe(true);
+  });
+
   it('should not send experimental.custom_tools when customTools is omitted or empty', async () => {
     await router.create('user_1', { toolkits: ['gmail'] });
     const payload1 = mockClient.toolRouter.session.create.mock.calls[0][0];

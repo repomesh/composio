@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel, Field
 
+from composio.exceptions import ValidationError
 from composio.core.models.custom_tool import ExperimentalAPI
 from composio.core.models.tool_router import (
     ToolkitConnectionsDetails,
@@ -628,6 +629,29 @@ class TestToolRouter:
         assert kwargs["preload"] == {"tools": "all"}
         assert session.preload.tools == "all"
 
+    def test_create_session_rejects_custom_slug_in_top_level_preload(
+        self, tool_router, mock_client
+    ):
+        @experimental_api.tool(
+            slug="GREP",
+            name="Grep",
+            description="Search local text",
+        )
+        def grep(input: GrepInput, ctx):
+            return {"matches": []}
+
+        with pytest.raises(
+            ValidationError,
+            match="Set preload=True on the SDK custom tool",
+        ):
+            tool_router.create(
+                user_id="user_123",
+                preload={"tools": ["GREP"]},
+                experimental={"custom_tools": [grep]},
+            )
+
+        mock_client.tool_router.session.create.assert_not_called()
+
     def test_create_session_with_direct_tools_preset(self, tool_router, mock_client):
         """direct_tools applies SDK-side defaults for direct tool exposure."""
         mock_client.tool_router.session.create.return_value.config.preload.tools = "all"
@@ -671,6 +695,42 @@ class TestToolRouter:
         assert kwargs["search"] == {"enable": False}
         assert kwargs["execute"] == {"enable_multi_execute": False}
         assert session.preload.tools == ["GITHUB_CREATE_ISSUE"]
+
+    def test_direct_tools_does_not_default_custom_preload_when_preload_overridden(
+        self, tool_router, mock_client
+    ):
+        """Explicit preload config also overrides the custom-tool preload default."""
+
+        @experimental_api.tool(
+            slug="GREP",
+            name="Grep",
+            description="Search local text",
+        )
+        def grep(input: GrepInput, ctx):
+            return {"matches": []}
+
+        mock_response = mock_client.tool_router.session.create.return_value
+        mock_response.config.preload.tools = ["GITHUB_CREATE_ISSUE"]
+        mock_response.experimental = MagicMock()
+        mock_response.experimental.assistive_prompt = None
+        mock_response.experimental.custom_toolkits = []
+        mock_custom_tool = MagicMock()
+        mock_custom_tool.slug = "SERVER_GREP"
+        mock_custom_tool.original_slug = "GREP"
+        mock_custom_tool.extends_toolkit = None
+        mock_response.experimental.custom_tools = [mock_custom_tool]
+
+        tool_router.create(
+            user_id="user_123",
+            session_preset="direct_tools",
+            toolkits=["github"],
+            preload={"tools": ["GITHUB_CREATE_ISSUE"]},
+            experimental={"custom_tools": [grep]},
+        )
+
+        kwargs = mock_client.tool_router.session.create.call_args.kwargs
+        assert kwargs["preload"] == {"tools": ["GITHUB_CREATE_ISSUE"]}
+        assert "preload" not in kwargs["experimental"]["custom_tools"][0]
 
     def test_create_session_complex_config(self, tool_router, mock_client):
         """Test creating a session with complex configuration."""
@@ -1149,18 +1209,19 @@ class TestToolRouter:
         mock_client,
         mock_provider,
     ):
-        """Custom tools preloaded by the create response are exposed locally."""
+        """Custom tools with SDK preload enabled are exposed locally."""
 
         @experimental_api.tool(
             slug="GREP",
             name="Grep",
             description="Search local text",
+            preload=True,
         )
         def grep(input: GrepInput, ctx):
             return {"matches": []}
 
         mock_response = mock_client.tool_router.session.create.return_value
-        mock_response.tool_router_tools = ["COMPOSIO_SEARCH_TOOLS", "server_grep"]
+        mock_response.tool_router_tools = ["COMPOSIO_SEARCH_TOOLS"]
         mock_response.experimental = MagicMock()
         mock_response.experimental.assistive_prompt = None
         mock_response.experimental.custom_toolkits = []

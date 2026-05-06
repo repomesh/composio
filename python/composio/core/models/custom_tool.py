@@ -156,6 +156,7 @@ def _create_tool(
     execute: CustomToolExecuteFn,
     extends_toolkit: t.Optional[str] = None,
     output_params: t.Optional[t.Type[BaseModel]] = None,
+    preload: t.Optional[bool] = None,
 ) -> CustomTool:
     """Internal: create and validate a CustomTool."""
     context = "experimental.tool"
@@ -218,6 +219,7 @@ def _create_tool(
         output_schema=output_schema,
         input_params=input_params,
         execute=execute,
+        preload=preload,
     )
 
 
@@ -258,6 +260,7 @@ def _infer_tool_from_function(
     description: t.Optional[str] = None,
     extends_toolkit: t.Optional[str] = None,
     output_params: t.Optional[t.Type[BaseModel]] = None,
+    preload: t.Optional[bool] = None,
     annotation_locals: t.Optional[t.Mapping[str, t.Any]] = None,
 ) -> CustomTool:
     """Create a CustomTool by inferring metadata from a decorated function.
@@ -341,6 +344,7 @@ def _infer_tool_from_function(
         execute=execute,
         extends_toolkit=extends_toolkit,
         output_params=output_params,
+        preload=preload,
     )
 
 
@@ -372,7 +376,14 @@ class ExperimentalToolkit:
             return {"results": []}
     """
 
-    def __init__(self, *, slug: str, name: str, description: str) -> None:
+    def __init__(
+        self,
+        *,
+        slug: str,
+        name: str,
+        description: str,
+        preload: t.Optional[bool] = None,
+    ) -> None:
         context = "experimental.Toolkit"
         _validate_slug(slug, context)
         if not name:
@@ -383,6 +394,7 @@ class ExperimentalToolkit:
         self.slug = slug
         self.name = name
         self.description = description
+        self.preload = preload
         self._tools: t.List[CustomTool] = []
 
     @property
@@ -400,6 +412,7 @@ class ExperimentalToolkit:
         name: t.Optional[str] = None,
         description: t.Optional[str] = None,
         output_params: t.Optional[t.Type[BaseModel]] = None,
+        preload: t.Optional[bool] = None,
     ) -> t.Callable[[t.Callable[..., t.Any]], CustomTool]: ...
 
     def tool(
@@ -410,6 +423,7 @@ class ExperimentalToolkit:
         name: t.Optional[str] = None,
         description: t.Optional[str] = None,
         output_params: t.Optional[t.Type[BaseModel]] = None,
+        preload: t.Optional[bool] = None,
     ) -> t.Union[CustomTool, t.Callable[[t.Callable[..., t.Any]], CustomTool]]:
         """Decorator to add a tool to this toolkit.
 
@@ -425,6 +439,7 @@ class ExperimentalToolkit:
                 name=name,
                 description=description,
                 output_params=output_params,
+                preload=preload,
                 annotation_locals=annotation_locals,
                 # No extends_toolkit for toolkit tools
             )
@@ -441,6 +456,7 @@ class ExperimentalToolkit:
                 name=name,
                 description=description,
                 output_params=output_params,
+                preload=preload,
                 annotation_locals=_get_caller_locals(),
             )
             _validate_slug_length(
@@ -479,6 +495,7 @@ class ExperimentalAPI:
         description: t.Optional[str] = None,
         extends_toolkit: t.Optional[str] = None,
         output_params: t.Optional[t.Type[BaseModel]] = None,
+        preload: t.Optional[bool] = None,
     ) -> t.Callable[[t.Callable[..., t.Any]], CustomTool]: ...
 
     def tool(
@@ -490,6 +507,7 @@ class ExperimentalAPI:
         description: t.Optional[str] = None,
         extends_toolkit: t.Optional[str] = None,
         output_params: t.Optional[t.Type[BaseModel]] = None,
+        preload: t.Optional[bool] = None,
     ) -> t.Union[CustomTool, t.Callable[[t.Callable[..., t.Any]], CustomTool]]:
         """Decorator to create a custom tool from a function.
 
@@ -526,6 +544,7 @@ class ExperimentalAPI:
                 description=description,
                 extends_toolkit=extends_toolkit,
                 output_params=output_params,
+                preload=preload,
                 annotation_locals=annotation_locals,
             )
 
@@ -537,6 +556,7 @@ class ExperimentalAPI:
                 description=description,
                 extends_toolkit=extends_toolkit,
                 output_params=output_params,
+                preload=preload,
                 annotation_locals=_get_caller_locals(),
             )
         return decorator
@@ -547,7 +567,28 @@ class ExperimentalAPI:
 # ────────────────────────────────────────────────────────────────
 
 
-def serialize_custom_tools(tools: t.List[CustomTool]) -> t.List[t.Dict[str, t.Any]]:
+def _serialized_preload_value(
+    preload: t.Optional[bool],
+    inherited_preload: t.Optional[bool],
+    default_preload: bool,
+) -> t.Optional[bool]:
+    resolved = (
+        preload
+        if preload is not None
+        else inherited_preload
+        if inherited_preload is not None
+        else default_preload
+    )
+    if preload is not None or inherited_preload is not None or default_preload:
+        return resolved
+    return None
+
+
+def serialize_custom_tools(
+    tools: t.List[CustomTool],
+    *,
+    default_preload: bool = False,
+) -> t.List[t.Dict[str, t.Any]]:
     """Serialize custom tools into the format expected by the backend."""
     result = []
     for tool in tools:
@@ -561,12 +602,19 @@ def serialize_custom_tools(tools: t.List[CustomTool]) -> t.List[t.Dict[str, t.An
             entry["output_schema"] = tool.output_schema
         if tool.extends_toolkit:
             entry["extends_toolkit"] = tool.extends_toolkit
+        preload = _serialized_preload_value(
+            tool.preload, inherited_preload=None, default_preload=default_preload
+        )
+        if preload is not None:
+            entry["preload"] = preload
         result.append(entry)
     return result
 
 
 def serialize_custom_toolkits(
     toolkits: t.Sequence[ExperimentalToolkit],
+    *,
+    default_preload: bool = False,
 ) -> t.List[t.Dict[str, t.Any]]:
     """Serialize custom toolkits into the format expected by the backend."""
     result = []
@@ -581,15 +629,26 @@ def serialize_custom_toolkits(
             }
             if tool.output_schema:
                 entry["output_schema"] = tool.output_schema
+            preload = _serialized_preload_value(
+                tool.preload,
+                inherited_preload=tk.preload,
+                default_preload=default_preload,
+            )
+            if preload is not None:
+                entry["preload"] = preload
             toolkit_tools.append(entry)
-        result.append(
-            {
-                "slug": tk.slug,
-                "name": tk.name,
-                "description": tk.description,
-                "tools": toolkit_tools,
-            }
+        toolkit_entry: t.Dict[str, t.Any] = {
+            "slug": tk.slug,
+            "name": tk.name,
+            "description": tk.description,
+            "tools": toolkit_tools,
+        }
+        preload = _serialized_preload_value(
+            tk.preload, inherited_preload=None, default_preload=default_preload
         )
+        if preload is not None:
+            toolkit_entry["preload"] = preload
+        result.append(toolkit_entry)
     return result
 
 
@@ -729,23 +788,63 @@ def find_custom_tool_map_entry_by_final_slug(
     return custom_tools_map.by_final_slug.get(slug.upper())
 
 
-def get_preloaded_custom_tool_slugs(
-    tool_router_tools: t.Optional[t.Iterable[str]],
+def assert_no_custom_tool_slugs_in_preload(
+    preload_tools: t.Union[t.Sequence[str], t.Literal["all"], None],
     custom_tools_map: t.Optional[CustomToolsMap],
+) -> None:
+    """Reject legacy top-level preload of custom tool slugs."""
+    if preload_tools is None or preload_tools == "all":
+        return
+
+    custom_preload_slugs = []
+    for slug in preload_tools:
+        normalized = slug.upper()
+        if normalized.startswith(LOCAL_TOOL_PREFIX) or (
+            custom_tools_map is not None
+            and (
+                normalized in custom_tools_map.by_original_slug
+                or normalized in custom_tools_map.by_final_slug
+            )
+        ):
+            custom_preload_slugs.append(slug)
+
+    if custom_preload_slugs:
+        raise ValidationError(
+            "Custom tool slugs are not supported in preload.tools: "
+            f"{', '.join(custom_preload_slugs)}. Set preload=True on the SDK "
+            "custom tool or custom toolkit definition instead."
+        )
+
+
+def get_preloaded_custom_tool_slugs(
+    custom_tools_map: t.Optional[CustomToolsMap],
+    *,
+    default_preload: bool = False,
 ) -> t.List[str]:
-    """Return final custom tool slugs selected by the backend for preload."""
-    if tool_router_tools is None or custom_tools_map is None:
+    """Return final custom tool slugs selected locally for preload."""
+    if custom_tools_map is None:
         return []
 
     seen: t.Set[str] = set()
     custom_tool_slugs: t.List[str] = []
 
-    for slug in tool_router_tools:
-        entry = find_custom_tool_map_entry_by_final_slug(
-            custom_tools_map,
-            str(slug),
+    for entry in custom_tools_map.by_final_slug.values():
+        toolkit = next(
+            (
+                tk
+                for tk in custom_tools_map.toolkits or []
+                if entry.toolkit and tk.slug.lower() == entry.toolkit.lower()
+            ),
+            None,
         )
-        if entry is None:
+        should_preload = (
+            entry.handle.preload
+            if entry.handle.preload is not None
+            else toolkit.preload
+            if toolkit is not None and toolkit.preload is not None
+            else default_preload
+        )
+        if not should_preload:
             continue
 
         final_slug_key = entry.final_slug.upper()

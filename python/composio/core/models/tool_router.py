@@ -19,6 +19,8 @@ from composio.client import HttpClient
 from composio.core.models.base import Resource
 from composio.core.models.custom_tool import (
     ExperimentalToolkit,
+    assert_no_custom_tool_slugs_in_preload,
+    build_custom_tools_map,
     build_custom_tools_map_from_response,
     get_preloaded_custom_tool_slugs,
     serialize_custom_tools,
@@ -627,6 +629,10 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                             - 'assistive_prompt' (dict): Configuration for assistive prompt generation.
                               - 'user_timezone' (str): IANA timezone identifier
                                 (e.g., "America/New_York", "Europe/London").
+                            - 'custom_tools' / 'custom_toolkits': SDK custom tools.
+                              Set preload=True on a custom tool or toolkit to expose
+                              it directly from session.tools(); otherwise custom tools
+                              remain search-only.
                             Example: {'assistive_prompt': {'user_timezone': 'America/New_York'}}
         :return: Tool router session object
 
@@ -716,6 +722,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             workbench=workbench,
             preload=preload,
         )
+        default_custom_preload = preload is not None and preload.get("tools") == "all"
 
         # Parse manage_connections config
         manage_connections = (
@@ -851,6 +858,8 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         # experimental.assistive_prompt_config.user_timezone
         custom_tools: t.Optional[t.List[CustomTool]] = None
         custom_toolkits: t.Optional[t.List[ExperimentalToolkit]] = None
+        local_custom_tools_map: t.Optional[CustomToolsMap] = None
+        inline_custom_tools_payload: t.Optional[t.Dict[str, t.Any]] = None
 
         if experimental is not None:
             experimental_payload: t.Dict[str, t.Any] = {}
@@ -866,15 +875,35 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             # Serialize custom tools and toolkits for the backend
             custom_tools = experimental.get("custom_tools")
             custom_toolkits = experimental.get("custom_toolkits")
+            if custom_tools or custom_toolkits:
+                local_custom_tools_map = build_custom_tools_map(
+                    custom_tools or [],
+                    custom_toolkits,
+                )
+                assert_no_custom_tool_slugs_in_preload(
+                    preload.get("tools") if preload is not None else None,
+                    local_custom_tools_map,
+                )
 
             if custom_tools:
                 experimental_payload["custom_tools"] = serialize_custom_tools(
-                    custom_tools
+                    custom_tools,
+                    default_preload=default_custom_preload,
                 )
             if custom_toolkits:
                 experimental_payload["custom_toolkits"] = serialize_custom_toolkits(
-                    custom_toolkits
+                    custom_toolkits,
+                    default_preload=default_custom_preload,
                 )
+
+            if (
+                "custom_tools" in experimental_payload
+                or "custom_toolkits" in experimental_payload
+            ):
+                inline_custom_tools_payload = {
+                    "custom_tools": experimental_payload.get("custom_tools"),
+                    "custom_toolkits": experimental_payload.get("custom_toolkits"),
+                }
 
             if experimental_payload:
                 create_params["experimental"] = experimental_payload
@@ -897,8 +926,8 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                 experimental=session.experimental,
             )
         preloaded_custom_tool_slugs = get_preloaded_custom_tool_slugs(
-            getattr(session, "tool_router_tools", None),
             custom_tools_map,
+            default_preload=default_custom_preload,
         )
 
         # Transform experimental response:
@@ -930,6 +959,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             user_id=user_id,
             preload=_session_preload_config(session),
             preloaded_custom_tool_slugs=preloaded_custom_tool_slugs,
+            inline_custom_tools_payload=inline_custom_tools_payload,
         )
 
     def use(self, session_id: str) -> ToolRouterSession[TTool, TToolCollection]:

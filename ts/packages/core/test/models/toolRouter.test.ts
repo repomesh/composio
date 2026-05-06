@@ -296,6 +296,23 @@ describe('ToolRouter', () => {
         expect(session.preload.tools).toBe('all');
       });
 
+      it('should reject custom tool slugs in top-level preload', async () => {
+        const grepTool = createCustomTool('GREP', {
+          name: 'Grep',
+          description: 'Search local text',
+          inputParams: z.object({ pattern: z.string() }),
+          execute: vi.fn(async () => ({ matches: [] })),
+        });
+
+        await expect(
+          toolRouter.create(userId, {
+            preload: { tools: ['GREP'] },
+            experimental: { customTools: [grepTool] },
+          })
+        ).rejects.toThrow('Set preload: true on the SDK custom tool');
+        expect(mockClient.toolRouter.session.create).not.toHaveBeenCalled();
+      });
+
       it('should apply the direct_tools session preset defaults', async () => {
         mockClient.toolRouter.session.create.mockResolvedValueOnce({
           ...mockSessionCreateResponse,
@@ -363,6 +380,42 @@ describe('ToolRouter', () => {
           experimental: undefined,
         });
         expect(session.preload.tools).toEqual(['GITHUB_CREATE_ISSUE']);
+      });
+
+      it('should not apply direct_tools custom preload default when preload is explicitly overridden', async () => {
+        const grepTool = createCustomTool('GREP', {
+          name: 'Grep',
+          description: 'Search local text',
+          inputParams: z.object({ pattern: z.string() }),
+          execute: vi.fn(async () => ({ matches: [] })),
+        });
+
+        mockClient.toolRouter.session.create.mockResolvedValueOnce({
+          ...mockSessionCreateResponse,
+          config: {
+            preload: { tools: ['GITHUB_CREATE_ISSUE'] },
+          },
+          experimental: {
+            custom_tools: [
+              {
+                slug: 'SERVER_GREP',
+                original_slug: 'GREP',
+                extends_toolkit: null,
+              },
+            ],
+          },
+        });
+
+        await toolRouter.create(userId, {
+          sessionPreset: 'direct_tools',
+          toolkits: ['github'],
+          preload: { tools: ['GITHUB_CREATE_ISSUE'] },
+          experimental: { customTools: [grepTool] },
+        });
+
+        const payload = mockClient.toolRouter.session.create.mock.calls[0][0];
+        expect(payload.preload).toEqual({ tools: ['GITHUB_CREATE_ISSUE'] });
+        expect(payload.experimental?.custom_tools?.[0]).not.toHaveProperty('preload');
       });
 
       it('should create a session with user ID only and verify MCP type transformation', async () => {
@@ -2164,6 +2217,47 @@ describe('ToolRouter', () => {
       });
     });
 
+    it('should pass inline custom tools to search', async () => {
+      const grepTool = createCustomTool('GREP', {
+        name: 'Grep',
+        description: 'Search local text',
+        preload: true,
+        inputParams: z.object({ pattern: z.string() }),
+        execute: vi.fn(async () => ({ matches: [] })),
+      });
+      mockClient.toolRouter.session.create.mockResolvedValueOnce({
+        ...mockSessionCreateResponse,
+        experimental: {
+          custom_tools: [
+            {
+              slug: 'LOCAL_GREP',
+              original_slug: 'GREP',
+              extends_toolkit: null,
+            },
+          ],
+        },
+      });
+      mockClient.toolRouter.session.search.mockResolvedValueOnce(mockSearchResponse);
+
+      const session = await toolRouter.create(userId, {
+        experimental: { customTools: [grepTool] },
+      });
+      await session.search({ query: 'search local text' });
+
+      expect(mockClient.toolRouter.session.search).toHaveBeenCalledWith(sessionId, {
+        queries: [{ use_case: 'search local text' }],
+        experimental: {
+          custom_tools: [
+            expect.objectContaining({
+              slug: 'GREP',
+              preload: true,
+            }),
+          ],
+          custom_toolkits: undefined,
+        },
+      });
+    });
+
     it('should propagate search API errors', async () => {
       mockClient.toolRouter.session.create.mockResolvedValueOnce(mockSessionCreateResponse);
       mockClient.toolRouter.session.search.mockRejectedValueOnce(new Error('Search failed'));
@@ -2343,10 +2437,11 @@ describe('ToolRouter', () => {
       expect(tools).toBe('mocked-wrapped-tools');
     });
 
-    it('should include preloaded custom tools selected by the create response', async () => {
+    it('should include custom tools with preload enabled locally', async () => {
       const grepTool = createCustomTool('GREP', {
         name: 'Grep',
         description: 'Search local text',
+        preload: true,
         inputParams: z.object({
           pattern: z.string().describe('Pattern to search for'),
         }),
@@ -2355,7 +2450,7 @@ describe('ToolRouter', () => {
 
       mockClient.toolRouter.session.create.mockResolvedValueOnce({
         ...mockSessionCreateResponse,
-        tool_router_tools: ['COMPOSIO_SEARCH_TOOLS', 'server_grep'],
+        tool_router_tools: ['COMPOSIO_SEARCH_TOOLS'],
         experimental: {
           custom_tools: [
             {
@@ -2385,7 +2480,41 @@ describe('ToolRouter', () => {
       expect(tools).toBe('mocked-custom-tools');
     });
 
-    it('should not expose custom tools unless the backend preloaded them', async () => {
+    it('should not expose custom tools unless SDK preload selects them', async () => {
+      const grepTool = createCustomTool('GREP', {
+        name: 'Grep',
+        description: 'Search local text',
+        inputParams: z.object({
+          pattern: z.string(),
+        }),
+        execute: vi.fn(async () => ({ matches: [] })),
+      });
+
+      mockClient.toolRouter.session.create.mockResolvedValueOnce({
+        ...mockSessionCreateResponse,
+        tool_router_tools: ['COMPOSIO_SEARCH_TOOLS'],
+        experimental: {
+          custom_tools: [
+            {
+              slug: 'LOCAL_GREP',
+              original_slug: 'GREP',
+              extends_toolkit: null,
+            },
+          ],
+        },
+      });
+      mockProvider.wrapTools.mockReturnValue('mocked-custom-tools');
+
+      const session = await toolRouter.create(userId, {
+        experimental: { customTools: [grepTool] },
+      });
+      await session.tools();
+
+      const wrappedTools = mockProvider.wrapTools.mock.calls[0][0] as Array<{ slug: string }>;
+      expect(wrappedTools.map(tool => tool.slug)).toEqual(['COMPOSIO_SEARCH_TOOLS']);
+    });
+
+    it('should expose custom tools by default for preload all', async () => {
       const grepTool = createCustomTool('GREP', {
         name: 'Grep',
         description: 'Search local text',
@@ -2417,7 +2546,7 @@ describe('ToolRouter', () => {
       await session.tools();
 
       const wrappedTools = mockProvider.wrapTools.mock.calls[0][0] as Array<{ slug: string }>;
-      expect(wrappedTools.map(tool => tool.slug)).toEqual(['COMPOSIO_SEARCH_TOOLS']);
+      expect(wrappedTools.map(tool => tool.slug)).toEqual(['COMPOSIO_SEARCH_TOOLS', 'LOCAL_GREP']);
     });
 
     it('should handle tools fetching errors', async () => {
