@@ -54,8 +54,10 @@ from .custom_tool_types import (
     SLUG_REGEX,
     CustomTool,
     CustomToolExecuteFn,
+    CustomToolkitWireDefinition,
     CustomToolsMap,
     CustomToolsMapEntry,
+    CustomToolWireDefinition,
 )
 
 if t.TYPE_CHECKING:
@@ -572,27 +574,25 @@ def _serialized_preload_value(
     inherited_preload: t.Optional[bool],
     default_preload: bool,
 ) -> t.Optional[bool]:
-    resolved = (
-        preload
-        if preload is not None
-        else inherited_preload
-        if inherited_preload is not None
-        else default_preload
+    inherited_or_default = (
+        inherited_preload if inherited_preload is not None else default_preload
     )
-    if preload is not None or inherited_preload is not None or default_preload:
-        return resolved
-    return None
+    if preload is not None:
+        return preload if preload or inherited_or_default else None
+    if inherited_preload is not None:
+        return inherited_preload if inherited_preload or default_preload else None
+    return True if default_preload else None
 
 
 def serialize_custom_tools(
     tools: t.List[CustomTool],
     *,
     default_preload: bool = False,
-) -> t.List[t.Dict[str, t.Any]]:
+) -> t.List[CustomToolWireDefinition]:
     """Serialize custom tools into the format expected by the backend."""
-    result = []
+    result: t.List[CustomToolWireDefinition] = []
     for tool in tools:
-        entry: t.Dict[str, t.Any] = {
+        entry: CustomToolWireDefinition = {
             "slug": tool.slug,
             "name": tool.name,
             "description": tool.description,
@@ -615,13 +615,13 @@ def serialize_custom_toolkits(
     toolkits: t.Sequence[ExperimentalToolkit],
     *,
     default_preload: bool = False,
-) -> t.List[t.Dict[str, t.Any]]:
+) -> t.List[CustomToolkitWireDefinition]:
     """Serialize custom toolkits into the format expected by the backend."""
-    result = []
+    result: t.List[CustomToolkitWireDefinition] = []
     for tk in toolkits:
-        toolkit_tools = []
+        toolkit_tools: t.List[CustomToolWireDefinition] = []
         for tool in tk.tools:
-            entry: t.Dict[str, t.Any] = {
+            entry: CustomToolWireDefinition = {
                 "slug": tool.slug,
                 "name": tool.name,
                 "description": tool.description,
@@ -637,7 +637,7 @@ def serialize_custom_toolkits(
             if preload is not None:
                 entry["preload"] = preload
             toolkit_tools.append(entry)
-        toolkit_entry: t.Dict[str, t.Any] = {
+        toolkit_entry: CustomToolkitWireDefinition = {
             "slug": tk.slug,
             "name": tk.name,
             "description": tk.description,
@@ -669,6 +669,7 @@ def build_custom_tools_map(
         handle: CustomTool, final_slug: str, toolkit: t.Optional[str]
     ) -> None:
         original_slug = handle.slug.upper()
+        # Custom tool slugs are matched case-insensitively across local and response maps.
         final_slug_key = final_slug.upper()
 
         if len(final_slug) > MAX_SLUG_LENGTH:
@@ -795,6 +796,12 @@ def assert_no_custom_tool_slugs_in_preload(
     """Reject legacy top-level preload of custom tool slugs."""
     if preload_tools is None or preload_tools == "all":
         return
+    if isinstance(preload_tools, str):
+        raise ValidationError(
+            'preload.tools must be a list of Composio tool slugs or "all". '
+            "Set preload=True on the SDK custom tool or custom toolkit "
+            "definition to expose custom tools directly."
+        )
 
     custom_preload_slugs = []
     for slug in preload_tools:

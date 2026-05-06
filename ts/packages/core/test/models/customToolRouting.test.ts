@@ -185,6 +185,25 @@ describe('ToolRouter.create() with customTools', () => {
     expect(payload.experimental.custom_tools[0].preload).toBe(true);
   });
 
+  it('should omit redundant custom tool preload false', async () => {
+    const searchOnlyTool = createCustomTool('SEARCH_ONLY_CONTEXT', {
+      name: 'Search-only context',
+      description: 'Retrieve context through search',
+      preload: false,
+      inputParams: z.object({}),
+      execute: localExecute,
+    });
+
+    await router.create('user_1', {
+      experimental: {
+        customTools: [searchOnlyTool],
+      },
+    });
+
+    const payload = mockClient.toolRouter.session.create.mock.calls[0][0];
+    expect(payload.experimental.custom_tools[0]).not.toHaveProperty('preload');
+  });
+
   it('should not send experimental.custom_tools when customTools is omitted or empty', async () => {
     await router.create('user_1', { toolkits: ['gmail'] });
     const payload1 = mockClient.toolRouter.session.create.mock.calls[0][0];

@@ -5,13 +5,11 @@ This example demonstrates how to use Composio SDK for tool-router.
 ## Setup
 
 1. **Install dependencies:**
-
    ```bash
    pnpm install
    ```
 
 2. **Configure environment:**
-
    ```bash
    cp .env.example .env
    ```
@@ -48,7 +46,6 @@ pnpm direct-tools
 ## Customization
 
 Edit `src/index.ts` to:
-
 - Add specific apps you want to integrate with
 - Implement your business logic
 - Add error handling and logging

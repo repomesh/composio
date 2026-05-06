@@ -39,10 +39,7 @@ import type {
 } from '../types/customTool.types';
 import type { Tool, ToolExecuteResponse } from '../types/tool.types';
 import type { SessionProxyExecuteParams } from '../types/toolRouter.types';
-import type {
-  SessionExecuteParams,
-  SessionSearchParams,
-} from '@composio/client/resources/tool-router/session/session.mjs';
+import type { SessionExecuteParams } from '@composio/client/resources/tool-router/session/session.mjs';
 import { SessionProxyExecuteParamsSchema } from '../types/toolRouter.types';
 import { SessionContextImpl } from './SessionContext';
 import { findCustomTool, executeCustomTool } from './customToolExecution';
@@ -359,7 +356,7 @@ export class ToolRouterSession<
     query: string;
     toolkits?: string[];
   }): Promise<ToolRouterSessionSearchResponse> {
-    const searchParams: SessionSearchParams & { toolkits?: string[] } = {
+    const searchParams = {
       queries: [{ use_case: params.query }],
       ...(params.toolkits?.length ? { toolkits: params.toolkits } : {}),
       ...(this.inlineCustomToolsPayload ? { experimental: this.inlineCustomToolsPayload } : {}),
@@ -402,7 +399,6 @@ export class ToolRouterSession<
     const executeParams: SessionExecuteParams = {
       tool_slug: toolSlug,
       arguments: arguments_ ?? {},
-      ...(this.inlineCustomToolsPayload ? { experimental: this.inlineCustomToolsPayload } : {}),
     };
     if (options?.account) {
       executeParams.account = options.account;

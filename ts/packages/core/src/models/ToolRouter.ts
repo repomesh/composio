@@ -163,8 +163,12 @@ export class ToolRouter<
     const inlineCustomToolsPayload =
       experimentalPayload.custom_tools || experimentalPayload.custom_toolkits
         ? {
-            custom_tools: experimentalPayload.custom_tools,
-            custom_toolkits: experimentalPayload.custom_toolkits,
+            ...(experimentalPayload.custom_tools
+              ? { custom_tools: experimentalPayload.custom_tools }
+              : {}),
+            ...(experimentalPayload.custom_toolkits
+              ? { custom_toolkits: experimentalPayload.custom_toolkits }
+              : {}),
           }
         : undefined;
 

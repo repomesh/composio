@@ -109,6 +109,29 @@ class CustomTool:
     preload: t.Optional[bool] = None
 
 
+class CustomToolWireDefinition(te.TypedDict, total=False):
+    slug: te.Required[str]
+    name: te.Required[str]
+    description: te.Required[str]
+    input_schema: te.Required[t.Dict[str, t.Any]]
+    extends_toolkit: str
+    output_schema: t.Dict[str, t.Any]
+    preload: bool
+
+
+class CustomToolkitWireDefinition(te.TypedDict, total=False):
+    slug: te.Required[str]
+    name: te.Required[str]
+    description: te.Required[str]
+    tools: te.Required[t.List[CustomToolWireDefinition]]
+    preload: bool
+
+
+class InlineCustomToolsWirePayload(te.TypedDict, total=False):
+    custom_tools: t.List[CustomToolWireDefinition]
+    custom_toolkits: t.List[CustomToolkitWireDefinition]
+
+
 # ────────────────────────────────────────────────────────────────
 # Internal routing map types
 # ────────────────────────────────────────────────────────────────

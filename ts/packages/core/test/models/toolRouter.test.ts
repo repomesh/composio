@@ -2253,7 +2253,6 @@ describe('ToolRouter', () => {
               preload: true,
             }),
           ],
-          custom_toolkits: undefined,
         },
       });
     });

@@ -422,6 +422,11 @@ class TestSerialization:
         result = serialize_custom_tools([preloaded])
         assert result[0]["preload"] is True
 
+    def test_serialize_custom_tool_omits_redundant_preload_false(self, grep_tool):
+        search_only = replace(grep_tool, preload=False)
+        result = serialize_custom_tools([search_only])
+        assert "preload" not in result[0]
+
     def test_serialize_toolkit(self, role_toolkit):
         result = serialize_custom_toolkits([role_toolkit])
         assert len(result) == 1

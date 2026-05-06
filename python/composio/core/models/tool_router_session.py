@@ -28,6 +28,7 @@ from composio_client.types.tool_router.session_proxy_execute_response import (
 from composio_client.types.tool_router.session_search_response import (
     SessionSearchResponse,
 )
+from composio_client.types.tool_router import session_search_params
 
 from composio.client import HttpClient
 from composio.core.models.connected_accounts import ConnectionRequest
@@ -39,6 +40,7 @@ from composio.core.models.custom_tool_execution import (
 from composio.core.models.custom_tool_types import (
     CustomToolsMap,
     CustomToolsMapEntry,
+    InlineCustomToolsWirePayload,
     RegisteredCustomTool,
     RegisteredCustomToolkit,
 )
@@ -65,7 +67,7 @@ MAX_PARALLEL_WORKERS = 5
 class ToolRouterSessionPreloadConfig:
     """Preloaded tools configured for a tool router session."""
 
-    tools: t.Union[t.List[str], str]
+    tools: t.Union[t.List[str], t.Literal["all"]]
 
 
 class ToolRouterSession(t.Generic[TTool, TToolCollection]):
@@ -105,7 +107,7 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
         user_id: t.Optional[str] = None,
         preload: t.Optional[ToolRouterSessionPreloadConfig] = None,
         preloaded_custom_tool_slugs: t.Optional[t.List[str]] = None,
-        inline_custom_tools_payload: t.Optional[t.Dict[str, t.Any]] = None,
+        inline_custom_tools_payload: t.Optional[InlineCustomToolsWirePayload] = None,
     ) -> None:
         self._client = client
         self._provider = provider
@@ -636,14 +638,19 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
 
         Returns relevant tools for the given query with schemas and guidance.
         """
-        params: t.Dict[str, t.Any] = {
-            "session_id": self.session_id,
-            "queries": [{"use_case": query}],
-            "model": model if model else omit,
-        }
-        if self._inline_custom_tools_payload is not None:
-            params["experimental"] = self._inline_custom_tools_payload
-        return self._client.tool_router.session.search(**params)
+        return self._client.tool_router.session.search(
+            session_id=self.session_id,
+            queries=[{"use_case": query}],
+            model=model if model else omit,
+            experimental=(
+                t.cast(
+                    session_search_params.Experimental,
+                    self._inline_custom_tools_payload,
+                )
+                if self._inline_custom_tools_payload is not None
+                else omit
+            ),
+        )
 
     def execute(
         self,
@@ -681,15 +688,12 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
             )
 
         # Remote execution
-        params: t.Dict[str, t.Any] = {
-            "session_id": self.session_id,
-            "tool_slug": tool_slug,
-            "arguments": arguments if arguments is not None else omit,
-            "account": account if account is not None else omit,
-        }
-        if self._inline_custom_tools_payload is not None:
-            params["experimental"] = self._inline_custom_tools_payload
-        return self._client.tool_router.session.execute(**params)
+        return self._client.tool_router.session.execute(
+            session_id=self.session_id,
+            tool_slug=tool_slug,
+            arguments=arguments if arguments is not None else omit,
+            account=account if account is not None else omit,
+        )
 
     def custom_tools(
         self, *, toolkit: t.Optional[str] = None

@@ -139,7 +139,7 @@ export const CreateCustomToolBaseSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'When true, expose this custom tool directly from session.tools(). This is SDK-local for custom tools and is sent to v3.1 as an input-only hint.'
+      'When true, expose this custom tool directly from session.tools(). This is SDK-local for custom tools and is sent to v3.1 with the inline custom definition.'
     ),
 });
 
@@ -171,7 +171,8 @@ export interface CustomTool {
   readonly extendsToolkit?: string;
   /**
    * Whether this custom tool should be exposed directly from session.tools().
-   * This is SDK-local for custom tools and is sent to v3.1 as an input-only hint.
+   * This is SDK-local for custom tools and is sent to v3.1 with the inline
+   * custom definition.
    */
   readonly preload?: boolean;
   readonly inputSchema: Record<string, unknown>;

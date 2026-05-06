@@ -652,6 +652,20 @@ class TestToolRouter:
 
         mock_client.tool_router.session.create.assert_not_called()
 
+    def test_create_session_rejects_bare_string_preload_tools(
+        self, tool_router, mock_client
+    ):
+        with pytest.raises(
+            ValidationError,
+            match='preload.tools must be a list of Composio tool slugs or "all"',
+        ):
+            tool_router.create(
+                user_id="user_123",
+                preload={"tools": "GMAIL_FETCH_EMAILS"},
+            )
+
+        mock_client.tool_router.session.create.assert_not_called()
+
     def test_create_session_with_direct_tools_preset(self, tool_router, mock_client):
         """direct_tools applies SDK-side defaults for direct tool exposure."""
         mock_client.tool_router.session.create.return_value.config.preload.tools = "all"

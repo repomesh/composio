@@ -286,6 +286,7 @@ export function buildCustomToolsMap(
 
   const addEntry = (handle: CustomTool, finalSlug: string, toolkit?: string) => {
     const originalSlug = handle.slug.toUpperCase();
+    // Custom tool slugs are matched case-insensitively across local and response maps.
     const finalSlugKey = finalSlug.toUpperCase();
 
     // Length validated early in createCustomTool/createCustomToolkit, but check as safety net
@@ -351,11 +352,14 @@ function shouldSerializePreload(
   inheritedPreload: boolean | undefined,
   defaultPreload: boolean
 ): boolean | undefined {
-  const resolved = preload ?? inheritedPreload ?? defaultPreload;
-  if (preload !== undefined || inheritedPreload !== undefined || defaultPreload) {
-    return resolved;
+  const inheritedOrDefault = inheritedPreload ?? defaultPreload;
+  if (preload !== undefined) {
+    return preload || inheritedOrDefault ? preload : undefined;
   }
-  return undefined;
+  if (inheritedPreload !== undefined) {
+    return inheritedPreload || defaultPreload ? inheritedPreload : undefined;
+  }
+  return defaultPreload ? true : undefined;
 }
 
 function preloadWireProperty(

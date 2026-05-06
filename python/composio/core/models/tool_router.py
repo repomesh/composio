@@ -29,6 +29,7 @@ from composio.core.models.custom_tool import (
 from composio.core.models.custom_tool_types import (
     CustomTool,
     CustomToolsMap,
+    InlineCustomToolsWirePayload,
 )
 from composio.core.models.tool_router_session import (
     ToolRouterSession,
@@ -221,10 +222,24 @@ class ToolRouterPreloadConfig(te.TypedDict, total=False):
                tool lists without first calling search.
     """
 
-    tools: t.Union[t.List[str], str]
+    tools: t.Union[t.List[str], t.Literal["all"]]
 
 
-def _session_preload_config(session: t.Any) -> ToolRouterSessionPreloadConfig:
+class _SessionPreloadLike(te.Protocol):
+    tools: t.Union[t.List[str], t.Literal["all"], None]
+
+
+class _SessionConfigLike(te.Protocol):
+    preload: _SessionPreloadLike
+
+
+class _SessionWithPreloadConfig(te.Protocol):
+    config: _SessionConfigLike
+
+
+def _session_preload_config(
+    session: _SessionWithPreloadConfig,
+) -> ToolRouterSessionPreloadConfig:
     tools = session.config.preload.tools
     return ToolRouterSessionPreloadConfig(
         tools=tools if isinstance(tools, str) else list(tools or [])
@@ -723,6 +738,10 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             preload=preload,
         )
         default_custom_preload = preload is not None and preload.get("tools") == "all"
+        assert_no_custom_tool_slugs_in_preload(
+            preload.get("tools") if preload is not None else None,
+            None,
+        )
 
         # Parse manage_connections config
         manage_connections = (
@@ -859,7 +878,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         custom_tools: t.Optional[t.List[CustomTool]] = None
         custom_toolkits: t.Optional[t.List[ExperimentalToolkit]] = None
         local_custom_tools_map: t.Optional[CustomToolsMap] = None
-        inline_custom_tools_payload: t.Optional[t.Dict[str, t.Any]] = None
+        inline_custom_tools_payload: t.Optional[InlineCustomToolsWirePayload] = None
 
         if experimental is not None:
             experimental_payload: t.Dict[str, t.Any] = {}
@@ -900,10 +919,15 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                 "custom_tools" in experimental_payload
                 or "custom_toolkits" in experimental_payload
             ):
-                inline_custom_tools_payload = {
-                    "custom_tools": experimental_payload.get("custom_tools"),
-                    "custom_toolkits": experimental_payload.get("custom_toolkits"),
-                }
+                inline_custom_tools_payload = {}
+                if "custom_tools" in experimental_payload:
+                    inline_custom_tools_payload["custom_tools"] = experimental_payload[
+                        "custom_tools"
+                    ]
+                if "custom_toolkits" in experimental_payload:
+                    inline_custom_tools_payload["custom_toolkits"] = experimental_payload[
+                        "custom_toolkits"
+                    ]
 
             if experimental_payload:
                 create_params["experimental"] = experimental_payload
