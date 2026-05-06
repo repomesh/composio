@@ -131,7 +131,7 @@ def get_account_audit_log(input: AccountInput, ctx):
 
 
 session = composio.create(
-    user_id=f"preload-example-{os.getpid()}",
+    user_id="preload-example-user",
     toolkits=["hackernews"],
     tools={"hackernews": {"enable": ["HACKERNEWS_GET_USER"]}},
     preload={"tools": ["HACKERNEWS_GET_USER"]},

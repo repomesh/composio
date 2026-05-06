@@ -111,7 +111,7 @@ const composio = new Composio({
   provider: new OpenAIAgentsProvider(),
 });
 
-const session = await composio.create(`preload-example-${Date.now()}`, {
+const session = await composio.create('preload-example-user', {
   toolkits: ['hackernews'],
   tools: {
     hackernews: {
@@ -138,7 +138,7 @@ const agent = new Agent({
   name: 'Preload Demo Agent',
   instructions:
     'Use the provided direct tools. Do not search for tools first; the needed tools are already loaded.',
-  model: process.env.OPENAI_MODEL ?? 'gpt-5.1',
+  model: process.env.OPENAI_MODEL ?? 'gpt-5.5',
   tools,
 });
 

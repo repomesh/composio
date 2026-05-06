@@ -32,7 +32,7 @@ composio = Composio(
 require_env("OPENAI_API_KEY")
 
 session = composio.create(
-    user_id=f"direct-tools-example-{os.getpid()}",
+    user_id="direct-tools-example-user",
     session_preset="direct_tools",
     toolkits=["hackernews"],
     tools={"hackernews": {"enable": ["HACKERNEWS_GET_USER"]}},

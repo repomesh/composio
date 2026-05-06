@@ -138,12 +138,12 @@ export class ToolRouterSession<
         if (customTool) {
           return executeCustomTool(customTool, input, this.sessionContext!);
         }
-        return ToolsModel.executeSessionTool(
+        return this.executeBackendSessionTool(
+          ToolsModel,
           toolSlug,
-          { sessionId: this.sessionId, arguments: input },
+          input,
           modifiers,
           toolBySlug.get(toolSlug.toUpperCase()),
-          { experimental: this.inlineExecuteExperimental() }
         );
       };
 
@@ -481,6 +481,21 @@ export class ToolRouterSession<
     return this.inlineCustomToolsPayload as SessionSearchParams.Experimental | undefined;
   }
 
+  private executeBackendSessionTool(
+    ToolsModel: Tools<TToolCollection, TTool, TProvider>,
+    toolSlug: string,
+    input: Record<string, unknown>,
+    modifiers?: SessionMetaToolOptions,
+    tool?: Tool
+  ): Promise<ToolExecuteResponse> {
+    const body = { sessionId: this.sessionId, arguments: input };
+    const experimental = this.inlineExecuteExperimental();
+    if (experimental) {
+      return ToolsModel.executeSessionTool(toolSlug, body, modifiers, tool, { experimental });
+    }
+    return ToolsModel.executeSessionTool(toolSlug, body, modifiers, tool);
+  }
+
   /** Parse an individual tool item from COMPOSIO_MULTI_EXECUTE_TOOL's tools array */
   private parseToolItem(item: unknown): { tool_slug: string; arguments: Record<string, unknown> } {
     if (typeof item !== 'object' || item === null) {
@@ -508,12 +523,12 @@ export class ToolRouterSession<
     const toolItems = input.tools as unknown[];
     if (!Array.isArray(toolItems) || toolItems.length === 0) {
       // Fallback: send to backend as-is
-      return ToolsModel.executeSessionTool(
+      return this.executeBackendSessionTool(
+        ToolsModel,
         COMPOSIO_MULTI_EXECUTE_TOOL,
-        { sessionId: this.sessionId, arguments: input },
+        input,
         modifiers,
-        multiExecuteTool,
-        { experimental: this.inlineExecuteExperimental() }
+        multiExecuteTool
       );
     }
 
@@ -533,12 +548,12 @@ export class ToolRouterSession<
 
     // All remote — just forward entire payload
     if (localItems.length === 0) {
-      return ToolsModel.executeSessionTool(
+      return this.executeBackendSessionTool(
+        ToolsModel,
         COMPOSIO_MULTI_EXECUTE_TOOL,
-        { sessionId: this.sessionId, arguments: input },
+        input,
         modifiers,
-        multiExecuteTool,
-        { experimental: this.inlineExecuteExperimental() }
+        multiExecuteTool
       );
     }
 
@@ -554,12 +569,12 @@ export class ToolRouterSession<
     if (remoteIndices.length > 0) {
       const remoteToolItems = remoteIndices.map(i => toolItems[i]);
       const remoteInput = { ...input, tools: remoteToolItems };
-      remotePromise = ToolsModel.executeSessionTool(
+      remotePromise = this.executeBackendSessionTool(
+        ToolsModel,
         COMPOSIO_MULTI_EXECUTE_TOOL,
-        { sessionId: this.sessionId, arguments: remoteInput },
+        remoteInput,
         modifiers,
-        multiExecuteTool,
-        { experimental: this.inlineExecuteExperimental() }
+        multiExecuteTool
       );
     }
 

@@ -31,7 +31,7 @@ const composio = new Composio({
   provider: new OpenAIAgentsProvider(),
 });
 
-const session = await composio.create(`direct-tools-example-${Date.now()}`, {
+const session = await composio.create('direct-tools-example-user', {
   sessionPreset: 'direct_tools',
   toolkits: ['hackernews'],
   tools: {
@@ -51,7 +51,7 @@ const agent = new Agent({
   name: 'Direct Tools Demo Agent',
   instructions:
     'Use the provided direct tools. The session is configured without Tool Router meta/helper tools.',
-  model: process.env.OPENAI_MODEL ?? 'gpt-5.1',
+  model: process.env.OPENAI_MODEL ?? 'gpt-5.5',
   tools,
 });
 

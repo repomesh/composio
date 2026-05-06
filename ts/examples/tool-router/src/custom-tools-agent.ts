@@ -169,7 +169,7 @@ const composio = new Composio({
   provider: new OpenAIAgentsProvider(),
 });
 
-const session = await composio.create(`agent-e2e-${Date.now()}`, {
+const session = await composio.create("custom-tools-agent-user", {
   toolkits: ["weathermap", "gmail"],
   manageConnections: false,
   experimental: {
