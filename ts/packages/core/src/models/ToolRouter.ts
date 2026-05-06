@@ -35,6 +35,7 @@ import {
   SessionCreateResponse,
   SessionRetrieveResponse,
 } from '@composio/client/resources/tool-router/session/session.mjs';
+import type { CustomTool, CustomToolkit } from '../types/customTool.types';
 import {
   transformToolRouterTagsParams,
   transformToolRouterToolsParams,
@@ -243,16 +244,53 @@ export class ToolRouter<
    * console.log(session.mcp.headers);
    * ```
    */
-  async use(id: string): Promise<Session<TToolCollection, TTool, TProvider>> {
-    const session = await this.client.toolRouter.session.retrieve(id);
+  async use(
+    id: string,
+    options?: { customTools?: CustomTool[]; customToolkits?: CustomToolkit[] }
+  ): Promise<Session<TToolCollection, TTool, TProvider>> {
+    const customTools = options?.customTools;
+    const customToolkits = options?.customToolkits;
+    const hasCustoms = !!(customTools?.length || customToolkits?.length);
+
+    let session: SessionRetrieveResponse;
+    if (hasCustoms) {
+      const experimentalPayload: {
+        custom_tools?: SessionCreateParams.Experimental.CustomTool[];
+        custom_toolkits?: SessionCreateParams.Experimental.CustomToolkit[];
+      } = {};
+      if (customTools?.length) {
+        experimentalPayload.custom_tools = serializeCustomTools(customTools);
+      }
+      if (customToolkits?.length) {
+        experimentalPayload.custom_toolkits = serializeCustomToolkits(customToolkits);
+      }
+      session = await this.client.post<SessionRetrieveResponse>(
+        `/api/v3.1/tool_router/session/${encodeURIComponent(id)}/attach`,
+        { body: { experimental: experimentalPayload } }
+      );
+    } else {
+      session = await this.client.toolRouter.session.retrieve(id);
+    }
+
+    let customToolsMap: CustomToolsMap | undefined;
+    let userId: string | undefined;
+    if (hasCustoms) {
+      customToolsMap = buildCustomToolsMapFromResponse(
+        customTools ?? [],
+        customToolkits,
+        session.experimental
+      );
+      userId = session.config.user_id;
+    }
+
     return new ToolRouterSession<TToolCollection, TTool, TProvider>(
       this.client,
       this.config,
       session.session_id,
       this.createMCPServerConfig(session.mcp),
       undefined,
-      undefined,
-      undefined,
+      customToolsMap,
+      userId,
       getSessionMetadata(session)
     );
   }
