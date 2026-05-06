@@ -1437,8 +1437,8 @@ importers:
   ts/packages/providers/mastra:
     dependencies:
       '@mastra/schema-compat':
-        specifier: ^1.0.0
-        version: 1.1.0(zod@4.3.6)
+        specifier: ^1.2.9
+        version: 1.2.9(zod@4.3.6)
     devDependencies:
       '@composio/core':
         specifier: workspace:*
@@ -3040,6 +3040,12 @@ packages:
 
   '@mastra/schema-compat@1.1.0':
     resolution: {integrity: sha512-2v8nTaAC/279jHs0ux2Emp+lNgBFq3QeNbZCGSHFeeBhbqqM5aWJCPY2Xgw8Z/dY3mTpFxBbmXQz3oRyYStnqg==}
+    engines: {node: '>=22.13.0'}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+
+  '@mastra/schema-compat@1.2.9':
+    resolution: {integrity: sha512-1/RgazXqi1Wdyx8aR81CVS+sRyzlTGUL1YhhHkSULoEY8aXs58bvWkH/6iixlYsY0xGvn+0OPLCeSRkBCtDx4Q==}
     engines: {node: '>=22.13.0'}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -8301,6 +8307,14 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@3.25.76)
 
   '@mastra/schema-compat@1.1.0(zod@4.3.6)':
+    dependencies:
+      json-schema-to-zod: 2.7.0
+      zod: 4.3.6
+      zod-from-json-schema: 0.5.2
+      zod-from-json-schema-v3: zod-from-json-schema@0.0.5
+      zod-to-json-schema: 3.25.2(zod@4.3.6)
+
+  '@mastra/schema-compat@1.2.9(zod@4.3.6)':
     dependencies:
       json-schema-to-zod: 2.7.0
       zod: 4.3.6
