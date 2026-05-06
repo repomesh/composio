@@ -10,6 +10,7 @@ import pytest
 
 from composio.client.types import Tool, tool_list_response
 from composio.core.models._files import (
+    FileDownloadable,
     FileHelper,
     FileUploadable,
     _is_url,
@@ -1992,3 +1993,78 @@ class TestUrlSanitization:
         url = "https://example.com/file.jpg"
         sanitized = _sanitize_url_for_logging(url)
         assert "[REDACTED]" not in sanitized
+
+
+class TestFileDownloadablePathTraversal:
+    """SEC-316: server-controlled `name` must not escape the output dir."""
+
+    def _mock_response(self, content: bytes = b"data") -> MagicMock:
+        response = MagicMock()
+        response.status_code = 200
+        response.iter_content = lambda chunk_size: [content]
+        return response
+
+    def test_relative_traversal_is_neutralized(self, tmp_path):
+        outdir = tmp_path / "safe"
+        # outdir does not need to exist yet — download() creates it.
+        f = FileDownloadable(
+            name="../../../PWNED.sh",
+            mimetype="application/octet-stream",
+            s3url="https://example.com/file",
+        )
+        with patch("composio.core.models._files.requests.get",
+                   return_value=self._mock_response(b"#!/bin/sh\n")):
+            written = f.download(outdir)
+
+        # Traversal sequence collapsed to basename and stayed inside outdir.
+        assert written == outdir / "PWNED.sh"
+        assert written.resolve().is_relative_to(outdir.resolve())
+        assert not (tmp_path / "PWNED.sh").exists()
+        assert written.read_bytes() == b"#!/bin/sh\n"
+
+    def test_absolute_path_is_neutralized(self, tmp_path):
+        outdir = tmp_path / "safe"
+        f = FileDownloadable(
+            name="/etc/passwd",
+            mimetype="application/octet-stream",
+            s3url="https://example.com/file",
+        )
+        with patch("composio.core.models._files.requests.get",
+                   return_value=self._mock_response(b"x")):
+            written = f.download(outdir)
+
+        # `Path('/etc/passwd').name == 'passwd'` — absolute path is stripped.
+        assert written == outdir / "passwd"
+        assert written.resolve().is_relative_to(outdir.resolve())
+
+    def test_dotdot_only_name_is_rejected(self, tmp_path):
+        """`Path('..').name == '..'`. Basename strip alone wouldn't catch it,
+        but the second-line `is_relative_to()` check does."""
+        from composio.exceptions import ErrorDownloadingFile
+
+        outdir = tmp_path / "safe"
+        f = FileDownloadable(
+            name="..",
+            mimetype="application/octet-stream",
+            s3url="https://example.com/file",
+        )
+        with patch("composio.core.models._files.requests.get",
+                   return_value=self._mock_response()):
+            with pytest.raises(ErrorDownloadingFile, match="Path traversal detected"):
+                f.download(outdir)
+        # No file was written under the parent.
+        assert not (tmp_path / "x").exists()
+
+    def test_safe_filename_passes_through(self, tmp_path):
+        outdir = tmp_path / "safe"
+        f = FileDownloadable(
+            name="report.pdf",
+            mimetype="application/pdf",
+            s3url="https://example.com/file",
+        )
+        with patch("composio.core.models._files.requests.get",
+                   return_value=self._mock_response(b"%PDF-1.4")):
+            written = f.download(outdir)
+
+        assert written == outdir / "report.pdf"
+        assert written.read_bytes() == b"%PDF-1.4"
