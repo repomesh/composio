@@ -135,6 +135,12 @@ export const CreateCustomToolBaseSchema = z.object({
    * Leave empty for tools that don't need any Composio-managed authentication.
    */
   extendsToolkit: z.string().optional(),
+  preload: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, expose this custom tool directly from session.tools(). This is SDK-local for custom tools and is sent to v3.1 with the inline custom definition.'
+    ),
 });
 
 /** Options for creating a custom tool via `createCustomTool()`. */
@@ -163,6 +169,12 @@ export interface CustomTool {
    * Undefined means the tool doesn't need any Composio-managed authentication.
    */
   readonly extendsToolkit?: string;
+  /**
+   * Whether this custom tool should be exposed directly from session.tools().
+   * This is SDK-local for custom tools and is sent to v3.1 with the inline
+   * custom definition.
+   */
+  readonly preload?: boolean;
   readonly inputSchema: Record<string, unknown>;
   /** JSON Schema representation of the output (for backend documentation) */
   readonly outputSchema?: Record<string, unknown>;
@@ -175,6 +187,10 @@ export interface CustomTool {
 /** Serialized tool definition sent to backend for search indexing. Uses official client type. */
 export type CustomToolDefinition = SessionCreateParams.Experimental.CustomTool;
 
+export type CustomToolWireDefinition = CustomToolDefinition & {
+  preload?: boolean;
+};
+
 // ────────────────────────────────────────────────────────────────
 // Custom toolkit types
 // ────────────────────────────────────────────────────────────────
@@ -186,6 +202,12 @@ export type CustomToolDefinition = SessionCreateParams.Experimental.CustomTool;
 export const CreateCustomToolkitBaseSchema = z.object({
   name: z.string().min(1, 'createCustomToolkit: name is required'),
   description: z.string().min(1, 'createCustomToolkit: description is required'),
+  preload: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, expose tools in this custom toolkit directly from session.tools(). Tool-level preload values override this default.'
+    ),
 });
 
 /** Options for creating a custom toolkit via `createCustomToolkit()`. */
@@ -202,11 +224,26 @@ export interface CustomToolkit {
   readonly slug: string;
   readonly name: string;
   readonly description: string;
+  /**
+   * Default direct-exposure setting for tools in this custom toolkit.
+   * Tool-level preload values override this default.
+   */
+  readonly preload?: boolean;
   readonly tools: readonly CustomTool[];
 }
 
 /** Serialized toolkit definition sent to backend. Uses official client type. */
 export type CustomToolkitDefinition = SessionCreateParams.Experimental.CustomToolkit;
+
+export type CustomToolkitWireDefinition = Omit<CustomToolkitDefinition, 'tools'> & {
+  preload?: boolean;
+  tools: Array<CustomToolkitDefinition['tools'][number] & { preload?: boolean }>;
+};
+
+export interface InlineCustomToolsWirePayload {
+  custom_tools?: CustomToolWireDefinition[];
+  custom_toolkits?: CustomToolkitWireDefinition[];
+}
 
 // ────────────────────────────────────────────────────────────────
 // Internal routing types

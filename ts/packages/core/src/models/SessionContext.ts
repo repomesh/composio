@@ -2,7 +2,11 @@
  * @fileoverview Session context implementation injected into custom tool execute functions.
  */
 import { Composio as ComposioClient } from '@composio/client';
-import type { SessionContext, CustomToolsMap } from '../types/customTool.types';
+import type {
+  SessionContext,
+  CustomToolsMap,
+  InlineCustomToolsWirePayload,
+} from '../types/customTool.types';
 import type {
   SessionProxyExecuteParams,
   ToolRouterSessionExecuteResponse,
@@ -16,6 +20,8 @@ import { ValidationError } from '../errors';
 import { transformProxyParams } from './proxyParamsTransform';
 import { findCustomTool, executeCustomTool } from './customToolExecution';
 import { transformExecuteResponse } from '../utils/transformers/toolRouterResponseTransform';
+import type { SessionExecuteParams } from '@composio/client/resources/tool-router/session/session.mjs';
+import { inlineCustomToolsExperimental } from './inlineCustomToolsPayload';
 
 /**
  * Concrete implementation of SessionContext.
@@ -33,7 +39,8 @@ export class SessionContextImpl implements SessionContext {
     private readonly client: ComposioClient,
     userId: string,
     private readonly sessionId: string,
-    private readonly customToolsMap?: CustomToolsMap
+    private readonly customToolsMap?: CustomToolsMap,
+    private readonly inlineCustomToolsPayload?: InlineCustomToolsWirePayload
   ) {
     this.userId = userId;
   }
@@ -61,10 +68,18 @@ export class SessionContextImpl implements SessionContext {
     }
 
     // Fall back to remote execution
-    const response = await this.client.toolRouter.session.execute(this.sessionId, {
+    const executeParams: SessionExecuteParams = {
       tool_slug: toolSlug,
       arguments: arguments_,
-    });
+    };
+    const experimental = inlineCustomToolsExperimental<SessionExecuteParams.Experimental>(
+      this.inlineCustomToolsPayload
+    );
+    if (experimental) {
+      executeParams.experimental = experimental;
+    }
+
+    const response = await this.client.toolRouter.session.execute(this.sessionId, executeParams);
     return ToolRouterSessionExecuteResponseSchema.parse(transformExecuteResponse(response));
   }
 

@@ -17,7 +17,11 @@ from composio.client.types import (
 )
 from composio.core.models._files import FileHelper
 from composio.core.models.base import Resource
+from composio.core.models.custom_tool_types import InlineCustomToolsWirePayload
 from composio.core.models.custom_tools import CustomTools
+from composio.core.models.inline_custom_tools_payload import (
+    inline_custom_tools_execute_experimental,
+)
 from composio.core.provider import TTool, TToolCollection
 from composio.core.provider.agentic import AgenticProvider, AgenticProviderExecuteFn
 from composio.core.provider.base import ExecuteToolFn
@@ -456,6 +460,7 @@ class Tools(Resource, t.Generic[TTool, TToolCollection]):
         self,
         session_id: str,
         modifiers: t.Optional[Modifiers] = None,
+        inline_custom_tools_payload: t.Optional[InlineCustomToolsWirePayload] = None,
     ) -> AgenticProviderExecuteFn:
         """
         Create an execute function for tool router session tools.
@@ -540,6 +545,9 @@ class Tools(Resource, t.Generic[TTool, TToolCollection]):
                 # Provider-wrapped session tools are agentic calls, so they opt into
                 # direct tool offload when the backend session workbench allows it.
                 enable_auto_workbench_offload=True,
+                experimental=inline_custom_tools_execute_experimental(
+                    inline_custom_tools_payload
+                ),
             )
 
             # Convert response to standard format

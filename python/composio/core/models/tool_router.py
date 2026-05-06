@@ -19,13 +19,17 @@ from composio.client import HttpClient
 from composio.core.models.base import Resource
 from composio.core.models.custom_tool import (
     ExperimentalToolkit,
+    assert_no_custom_tool_slugs_in_preload,
+    build_custom_tools_map,
     build_custom_tools_map_from_response,
+    get_preloaded_custom_tool_slugs,
     serialize_custom_tools,
     serialize_custom_toolkits,
 )
 from composio.core.models.custom_tool_types import (
     CustomTool,
     CustomToolsMap,
+    InlineCustomToolsWirePayload,
 )
 from composio.core.models.tool_router_session import (
     ToolRouterSession,
@@ -51,6 +55,7 @@ ToolRouterTag = t.Literal[
 # +----------+------+------+
 # Defaults to "standard" server-side when omitted.
 SandboxSize = t.Literal["standard", "medium", "large", "xlarge"]
+SessionPreset = t.Literal["direct_tools"]
 
 
 class ToolRouterToolkitsEnableConfig(te.TypedDict, total=False):
@@ -217,7 +222,43 @@ class ToolRouterPreloadConfig(te.TypedDict, total=False):
                tool lists without first calling search.
     """
 
-    tools: t.List[str]
+    tools: t.Union[t.List[str], t.Literal["all"]]
+
+
+class _SessionPreloadLike(te.Protocol):
+    @property
+    def tools(self) -> t.Union[t.List[str], str, None]: ...
+
+
+def _session_preload_config(
+    preload: _SessionPreloadLike,
+) -> ToolRouterSessionPreloadConfig:
+    tools = preload.tools
+    if tools == "all":
+        return ToolRouterSessionPreloadConfig(tools="all")
+    if isinstance(tools, list):
+        return ToolRouterSessionPreloadConfig(tools=t.cast(t.List[str], tools))
+    return ToolRouterSessionPreloadConfig(tools=[])
+
+
+def _apply_session_preset_defaults(
+    session_preset: t.Optional[SessionPreset],
+    manage_connections: t.Optional[t.Union[bool, ToolRouterManageConnectionsConfig]],
+    workbench: t.Optional[ToolRouterWorkbenchConfig],
+    preload: t.Optional[ToolRouterPreloadConfig],
+) -> t.Tuple[
+    t.Optional[t.Union[bool, ToolRouterManageConnectionsConfig]],
+    t.Optional[ToolRouterWorkbenchConfig],
+    t.Optional[ToolRouterPreloadConfig],
+]:
+    if session_preset != "direct_tools":
+        return manage_connections, workbench, preload
+
+    return (
+        False if manage_connections is None else manage_connections,
+        {"enable": False} if workbench is None else workbench,
+        {"tools": "all"} if preload is None else preload,
+    )
 
 
 class ToolRouterAssistivePromptConfig(te.TypedDict, total=False):
@@ -497,6 +538,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         workbench: t.Optional[ToolRouterWorkbenchConfig] = None,
         multi_account: t.Optional[ToolRouterMultiAccountConfig] = None,
         preload: t.Optional[ToolRouterPreloadConfig] = None,
+        session_preset: t.Optional[SessionPreset] = None,
         experimental: t.Optional[ToolRouterExperimentalConfig] = None,
     ) -> ToolRouterSession[TTool, TToolCollection]:
         """
@@ -553,8 +595,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                            Example: {'github': 'ac_xxx', 'slack': 'ac_yyy'}
         :param connected_accounts: Optional mapping of toolkit slug to connected account ID.
                                   Example: {'github': 'ca_xxx', 'slack': 'ca_yyy'}
-        :param workbench: Optional workbench configuration (ToolRouterWorkbenchConfig).
-                         Dict with:
+        :param workbench: Optional workbench configuration. Dict with:
                          - 'enable' (bool): Whether to enable the workbench entirely.
                            Defaults to True. When set to False, no code execution tools
                            (COMPOSIO_REMOTE_WORKBENCH, COMPOSIO_REMOTE_BASH_TOOL) are
@@ -579,15 +620,29 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                               account selection when multiple accounts are connected.
                             Example: {'enable': True, 'max_accounts_per_toolkit': 3}
         :param preload: Optional preload configuration. Dict with:
-                        - 'tools' (List[str]): Tool slugs to expose directly in
-                          session.tools() and MCP tool lists.
+                        - 'tools' (List[str] | 'all'): Tool slugs to expose directly in
+                          session.tools() and MCP tool lists. 'all' exposes every app
+                          tool allowed by positive session filters such as toolkits,
+                          tools, or tags; the backend validates and caps the final set.
                         Example: {'tools': ['GMAIL_FETCH_EMAILS']}
+        :param session_preset: Optional session preset. 'direct_tools' exposes all tools
+                              allowed by the session filters directly in session.tools()
+                              and the MCP tool list, and disables meta tools by default
+                              (search, multi-execute, manage-connections, and workbench).
+                              Use when all needed tools are known upfront and helper/meta
+                              tools are not needed. Without this preset, ToolRouter uses
+                              the default configuration with meta tools enabled. Loading
+                              many tools can increase model context usage.
         :param experimental: Optional experimental configuration (ToolRouterExperimentalConfig).
                             Note: These features are experimental and may change.
                             Dict with:
                             - 'assistive_prompt' (dict): Configuration for assistive prompt generation.
                               - 'user_timezone' (str): IANA timezone identifier
                                 (e.g., "America/New_York", "Europe/London").
+                            - 'custom_tools' / 'custom_toolkits': SDK custom tools.
+                              Set preload=True on a custom tool or toolkit to expose
+                              it directly from session.tools(); otherwise custom tools
+                              remain search-only.
                             Example: {'assistive_prompt': {'user_timezone': 'America/New_York'}}
         :return: Tool router session object
 
@@ -669,6 +724,19 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             toolkit_states = session.toolkits()
             ```
         """
+
+        direct_tools_preset = session_preset == "direct_tools"
+        manage_connections, workbench, preload = _apply_session_preset_defaults(
+            session_preset=session_preset,
+            manage_connections=manage_connections,
+            workbench=workbench,
+            preload=preload,
+        )
+        default_custom_preload = preload is not None and preload.get("tools") == "all"
+        assert_no_custom_tool_slugs_in_preload(
+            preload.get("tools") if preload is not None else None,
+            None,
+        )
 
         # Parse manage_connections config
         manage_connections = (
@@ -795,11 +863,17 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         if preload is not None:
             create_params["preload"] = preload
 
+        if direct_tools_preset:
+            create_params["search"] = {"enable": False}
+            create_params["execute"] = {"enable_multi_execute": False}
+
         # Build experimental config
         # Map SDK's experimental.assistive_prompt.user_timezone to API's
         # experimental.assistive_prompt_config.user_timezone
         custom_tools: t.Optional[t.List[CustomTool]] = None
         custom_toolkits: t.Optional[t.List[ExperimentalToolkit]] = None
+        local_custom_tools_map: t.Optional[CustomToolsMap] = None
+        inline_custom_tools_payload: t.Optional[InlineCustomToolsWirePayload] = None
 
         if experimental is not None:
             experimental_payload: t.Dict[str, t.Any] = {}
@@ -815,15 +889,40 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             # Serialize custom tools and toolkits for the backend
             custom_tools = experimental.get("custom_tools")
             custom_toolkits = experimental.get("custom_toolkits")
+            if custom_tools or custom_toolkits:
+                local_custom_tools_map = build_custom_tools_map(
+                    custom_tools or [],
+                    custom_toolkits,
+                )
+                assert_no_custom_tool_slugs_in_preload(
+                    preload.get("tools") if preload is not None else None,
+                    local_custom_tools_map,
+                )
 
             if custom_tools:
                 experimental_payload["custom_tools"] = serialize_custom_tools(
-                    custom_tools
+                    custom_tools,
+                    default_preload=default_custom_preload,
                 )
             if custom_toolkits:
                 experimental_payload["custom_toolkits"] = serialize_custom_toolkits(
-                    custom_toolkits
+                    custom_toolkits,
+                    default_preload=default_custom_preload,
                 )
+
+            if (
+                "custom_tools" in experimental_payload
+                or "custom_toolkits" in experimental_payload
+            ):
+                inline_custom_tools_payload = {}
+                if "custom_tools" in experimental_payload:
+                    inline_custom_tools_payload["custom_tools"] = experimental_payload[
+                        "custom_tools"
+                    ]
+                if "custom_toolkits" in experimental_payload:
+                    inline_custom_tools_payload["custom_toolkits"] = (
+                        experimental_payload["custom_toolkits"]
+                    )
 
             if experimental_payload:
                 create_params["experimental"] = experimental_payload
@@ -845,6 +944,10 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                 toolkits=custom_toolkits,
                 experimental=session.experimental,
             )
+        preloaded_custom_tool_slugs = get_preloaded_custom_tool_slugs(
+            custom_tools_map,
+            default_preload=default_custom_preload,
+        )
 
         # Transform experimental response:
         # API's assistive_prompt -> SDK's assistive_prompt
@@ -873,9 +976,9 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
             experimental=experimental_response,
             custom_tools_map=custom_tools_map,
             user_id=user_id,
-            preload=ToolRouterSessionPreloadConfig(
-                tools=list(session.config.preload.tools)
-            ),
+            preload=_session_preload_config(session.config.preload),
+            preloaded_custom_tool_slugs=preloaded_custom_tool_slugs,
+            inline_custom_tools_payload=inline_custom_tools_payload,
         )
 
     def use(self, session_id: str) -> ToolRouterSession[TTool, TToolCollection]:
@@ -930,9 +1033,7 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                 url=session.mcp.url,
             ),
             experimental=experimental_response,
-            preload=ToolRouterSessionPreloadConfig(
-                tools=list(session.config.preload.tools)
-            ),
+            preload=_session_preload_config(session.config.preload),
         )
 
 
@@ -952,6 +1053,7 @@ __all__ = [
     "ToolRouterManageConnectionsConfig",
     "ToolRouterWorkbenchConfig",
     "SandboxSize",
+    "SessionPreset",
     "ToolRouterMultiAccountConfig",
     "ToolRouterPreloadConfig",
     "ToolRouterExperimentalConfig",

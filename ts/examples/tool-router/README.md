@@ -13,9 +13,11 @@ This example demonstrates how to use Composio SDK for tool-router.
    ```bash
    cp .env.example .env
    ```
-   
+
    Then edit `.env` and add your API keys:
    - `COMPOSIO_API_KEY`: Get it from [Composio Dashboard](https://app.composio.dev)
+   - `OPENAI_API_KEY`: Required for OpenAI Agents examples
+   - `OPENAI_MODEL`: Optional model override for OpenAI Agents examples
 
 ## Running the Example
 
@@ -25,6 +27,12 @@ pnpm start
 
 # Run in development mode (with file watching)
 pnpm dev
+
+# Explicit preload for app tools and SDK custom tools
+pnpm preload
+
+# Direct-tools preset for sessions where all tools are known upfront
+pnpm direct-tools
 ```
 
 ## What This Example Does
@@ -32,6 +40,8 @@ pnpm dev
 - Initializes Composio SDK
 - Fetches available tools
 - Demonstrates basic usage patterns
+- Shows how to preload selected app tools and SDK-local custom tools into `session.tools()`
+- Shows `sessionPreset: "direct_tools"` for loading all tools allowed by session filters without meta/helper tools
 
 ## Customization
 

@@ -146,7 +146,7 @@ const userManagement = experimental_createToolkit("USER_MANAGEMENT", {
 const composio = new Composio({ apiKey, baseURL: baseURL ?? undefined });
 
 async function main() {
-  const userId = `e2e-custom-${Date.now()}`;
+  const userId = "custom-tools-e2e-user";
   console.log(`\nCreating session for user: ${userId}`);
   console.log(`Base URL: ${baseURL ?? "(default)"}\n`);
 
