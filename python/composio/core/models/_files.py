@@ -547,7 +547,18 @@ class FileDownloadable(BaseModel):
     s3url: str = Field(..., description="URL of the file.")
 
     def download(self, outdir: Path, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> Path:
-        outfile = outdir / self.name
+        # SEC-316: `self.name` comes from the (potentially compromised or
+        # MITM'd) Composio API response. Strip directory components with
+        # `Path(...).name` so traversal sequences like `../../../foo` collapse
+        # to `foo`, then verify the resolved output stays under `outdir` so a
+        # name like `output_evil/foo` (sibling-prefix attack) is also rejected.
+        safe_name = Path(self.name).name
+        outfile = outdir / safe_name
+        if not outfile.resolve().is_relative_to(outdir.resolve()):
+            raise ErrorDownloadingFile(
+                f"Path traversal detected: filename '{self.name}' resolves "
+                "outside the intended output directory."
+            )
         outdir.mkdir(exist_ok=True, parents=True)
         response = requests.get(url=self.s3url, stream=True)
         if response.status_code != 200:
