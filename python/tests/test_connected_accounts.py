@@ -194,6 +194,18 @@ class TestConnectionRequest:
             client=mock_client,
         )
 
+        # Defensively patch `time.time` (matches sibling tests at lines 137,
+        # 170): a stuck CI runner could otherwise reach the deadline before
+        # the first retrieve call lands, masking the SDKError assertion as a
+        # ComposioSDKTimeoutError.
+        current_time = {"value": 0.0}
+
+        def fake_time():
+            value = current_time["value"]
+            current_time["value"] += 0.1
+            return value
+
+        monkeypatch.setattr(time, "time", fake_time)
         monkeypatch.setattr(time, "sleep", lambda *_args, **_kwargs: None)
 
         with pytest.raises(exceptions.SDKError) as excinfo:
