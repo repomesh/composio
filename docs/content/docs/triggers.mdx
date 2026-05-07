@@ -25,12 +25,12 @@ Every webhook trigger routes through a **webhook endpoint** — a project-scoped
 https://backend.composio.dev/api/v3.1/webhook_ingress/{toolkit_slug}/{we_xxx}/trigger_event
 ```
 
-There are two ways an endpoint gets configured:
+An endpoint is configured in one of two ways:
 
 | Configuration | When it applies | What you do |
 |---|---|---|
-| **Composio configures it for you** | Composio-managed OAuth apps (any toolkit) **or** your own OAuth app on a toolkit Composio can register webhooks for on your behalf using the connected user's credentials (e.g. **Asana**) | Nothing — endpoint setup, signature verification, and provider-side registration happen automatically when you create the trigger |
-| **You configure it** | Your own OAuth app on a toolkit whose provider posts events at the OAuth-app level (today: **Slack** and **Notion**; more toolkits will follow on this same flow) | Once per OAuth app, before creating triggers — see [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) |
+| **Composio configures it for you** | You're using a Composio-managed OAuth app, or your own OAuth app on a toolkit where Composio can register webhooks on your behalf using the connected user's credentials (e.g. **Asana**) | Nothing. Composio handles endpoint setup, signature verification, and provider-side registration when you create the trigger. |
+| **You configure it** | You're using your own OAuth app on a toolkit where the provider posts events at the OAuth-app level — today **Slack** and **Notion**, with more toolkits moving to this flow over time | Set up the webhook endpoint once per OAuth app before you create any triggers — see [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint). |
 
 <Callout>
 **If you use Composio-managed credentials, you don't need to configure anything — skip ahead to [Creating triggers](/docs/setting-up-triggers/creating-triggers).** Manual webhook-endpoint setup only applies when you bring your own OAuth app.
@@ -45,8 +45,8 @@ curl "https://backend.composio.dev/api/v3.1/webhook_endpoints/schema?toolkit_slu
   -H "x-api-key: <YOUR_COMPOSIO_API_KEY>"
 ```
 
-- **`setup_fields` is empty / not present** → Composio configures the endpoint for you. Nothing to do.
-- **`setup_fields` lists one or more fields** → You configure the endpoint. The fields tell you what credentials to collect from the provider (signing secret, app-level token, etc.). Today this applies to **Slack** and **Notion**; the list will grow as more toolkits move onto this flow.
+- **`setup_fields` is empty or absent** → Composio configures the endpoint for you. Nothing to do.
+- **`setup_fields` lists one or more fields** → You configure the endpoint. The fields tell you what credentials to collect from the provider — signing secret, app-level token, and so on. Today this applies to **Slack** and **Notion**; more toolkits will adopt this flow over time.
 
 ## End-to-end flow
 
@@ -60,12 +60,12 @@ Two webhook URLs sit on opposite sides of Composio. Don't confuse them:
 
 | URL | Direction | Who configures it |
 |---|---|---|
-| **Ingress** (`/api/v3.1/webhook_ingress/...`) | Provider → Composio | Composio for most cases; you for your-own-OAuth on toolkits like Slack and Notion — see [Webhook endpoints](#webhook-endpoints) above |
+| **Ingress** (`/api/v3.1/webhook_ingress/...`) | Provider → Composio | Composio in most cases; you when you bring your own OAuth app on a toolkit like Slack or Notion — see [Webhook endpoints](#webhook-endpoints) above |
 | **Webhook subscription** (your URL) | Composio → your application | You, once per project — see [Subscribing to triggers](/docs/setting-up-triggers/subscribing-to-events) |
 
 Composio verifies signatures on both hops:
 
-- **At ingress**, every inbound request is verified against the signing secret on the webhook endpoint. Unsigned or tampered requests are rejected before any trigger fires. For toolkits where Composio configures the endpoint, the signing secret is sourced from the connected account's credentials; for toolkits where you configure it, you store the secret on the endpoint yourself.
+- **At ingress**, every inbound request is verified against the signing secret on the webhook endpoint. Unsigned or tampered requests are rejected before any trigger fires. When Composio configures the endpoint, the signing secret comes from the connected account's credentials; when you configure it, you store the secret on the endpoint yourself.
 - **At delivery**, every webhook Composio sends to your endpoint is signed with your subscription secret — verify it as described in [Verifying webhooks](/docs/webhook-verification).
 
 ## Working with triggers
@@ -75,7 +75,7 @@ Composio verifies signatures on both hops:
 **Configure delivery to your application.** Create a [webhook subscription](/docs/setting-up-triggers/subscribing-to-events) so Composio knows which URL to deliver events to. One-time per project.
 </Step>
 <Step>
-**Configure ingress (only when needed).** Use the [schema endpoint](#checking-which-case-applies-to-your-toolkit) to check whether your toolkit needs a manually-configured webhook endpoint; if it does, [create one](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) and point the provider's app dashboard at the URL Composio returns. One-time per OAuth app.
+**Configure ingress, only if your toolkit needs it.** Use the [schema endpoint](#checking-which-case-applies-to-your-toolkit) to check. If it returns setup fields, [create the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) and paste the URL Composio returns into the provider's app dashboard. One-time per OAuth app.
 </Step>
 <Step>
 **Discover** available trigger types for the toolkit (e.g. `GITHUB_COMMIT_EVENT`).
@@ -107,7 +107,7 @@ Triggers are scoped to a connected account. If you haven't set up authentication
 ## Next steps
 
 <Cards>
-  <Card icon={<Zap />} title="Creating triggers" href="/docs/setting-up-triggers/creating-triggers" description="Configure the webhook endpoint (when needed), then create trigger instances via the dashboard or SDK" />
+  <Card icon={<Zap />} title="Creating triggers" href="/docs/setting-up-triggers/creating-triggers" description="Configure the webhook endpoint if your toolkit needs it, then create trigger instances via the dashboard or SDK" />
   <Card icon={<Plug />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Receive trigger events via webhooks or SDK subscriptions" />
   <Card icon={<ShieldCheck />} title="Verifying webhooks" href="/docs/webhook-verification" description="Verify webhook signatures and understand payload versions" />
   <Card icon={<Wrench />} title="Managing triggers" href="/docs/setting-up-triggers/managing-triggers" description="Discover, list, enable, disable, and delete triggers" />
