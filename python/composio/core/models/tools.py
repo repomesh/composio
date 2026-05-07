@@ -17,7 +17,11 @@ from composio.client.types import (
 )
 from composio.core.models._files import FileHelper
 from composio.core.models.base import Resource
+from composio.core.models.custom_tool_types import InlineCustomToolsWirePayload
 from composio.core.models.custom_tools import CustomTools
+from composio.core.models.inline_custom_tools_payload import (
+    inline_custom_tools_execute_experimental,
+)
 from composio.core.provider import TTool, TToolCollection
 from composio.core.provider.agentic import AgenticProvider, AgenticProviderExecuteFn
 from composio.core.provider.base import ExecuteToolFn
@@ -39,6 +43,8 @@ from ._modifiers import (
     merge_before_file_upload,
     schema_modifier,
 )
+
+TOOL_ROUTER_SESSION_TOOLS_PAGE_LIMIT = 500
 
 
 def _needs_serialization(obj: t.Any) -> bool:
@@ -275,9 +281,21 @@ class Tools(Resource, t.Generic[TTool, TToolCollection]):
             ```
         """
         # Fetch session tools from the API
-        tools_response = self._client.tool_router.session.tools(session_id=session_id)
-        # Cast to Tool type - session.tools returns compatible Item type from different response schema
-        tools_list: t.List[Tool] = [t.cast(Tool, item) for item in tools_response.items]
+        tools_list: t.List[Tool] = []
+        cursor: t.Optional[str] = None
+
+        while True:
+            tools_response = self._client.tool_router.session.tools(
+                session_id=session_id,
+                cursor=none_to_omit(cursor),
+                limit=TOOL_ROUTER_SESSION_TOOLS_PAGE_LIMIT,
+            )
+            # Cast to Tool type - session.tools returns compatible Item type from different response schema
+            tools_list.extend(t.cast(Tool, item) for item in tools_response.items)
+
+            cursor = getattr(tools_response, "next_cursor", None)
+            if not cursor:
+                break
 
         # Apply schema modifiers if provided
         if modifiers is not None:
@@ -442,6 +460,7 @@ class Tools(Resource, t.Generic[TTool, TToolCollection]):
         self,
         session_id: str,
         modifiers: t.Optional[Modifiers] = None,
+        inline_custom_tools_payload: t.Optional[InlineCustomToolsWirePayload] = None,
     ) -> AgenticProviderExecuteFn:
         """
         Create an execute function for tool router session tools.
@@ -526,6 +545,9 @@ class Tools(Resource, t.Generic[TTool, TToolCollection]):
                 # Provider-wrapped session tools are agentic calls, so they opt into
                 # direct tool offload when the backend session workbench allows it.
                 enable_auto_workbench_offload=True,
+                experimental=inline_custom_tools_execute_experimental(
+                    inline_custom_tools_payload
+                ),
             )
 
             # Convert response to standard format

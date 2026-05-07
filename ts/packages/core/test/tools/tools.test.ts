@@ -355,6 +355,31 @@ describe('Tools', () => {
     });
   });
 
+  describe('getRawToolRouterSessionTools', () => {
+    it('should fetch all paginated session tool pages', async () => {
+      mockClient.toolRouter.session.tools
+        .mockResolvedValueOnce({
+          items: [{ ...toolMocks.rawTool, slug: 'FIRST_TOOL' }],
+          next_cursor: 'next_page',
+        })
+        .mockResolvedValueOnce({
+          items: [{ ...toolMocks.rawTool, slug: 'SECOND_TOOL' }],
+          next_cursor: null,
+        });
+
+      const result = await context.tools.getRawToolRouterSessionTools('session_123');
+
+      expect(result.map(tool => tool.slug)).toEqual(['FIRST_TOOL', 'SECOND_TOOL']);
+      expect(mockClient.toolRouter.session.tools).toHaveBeenNthCalledWith(1, 'session_123', {
+        limit: 500,
+      });
+      expect(mockClient.toolRouter.session.tools).toHaveBeenNthCalledWith(2, 'session_123', {
+        limit: 500,
+        cursor: 'next_page',
+      });
+    });
+  });
+
   describe('getRawComposioToolBySlug', () => {
     it('should fetch a tool by slug from the API', async () => {
       const slug = 'TOOL_SLUG';
@@ -1045,6 +1070,42 @@ describe('Tools', () => {
           error: null,
           successful: true,
           logId: '123',
+        });
+      });
+
+      it('should pass inline custom tools to tool router session execute', async () => {
+        const toolSlug = 'COMPOSIO_TOOL';
+        const body = {
+          sessionId,
+          arguments: { query: 'test' },
+        };
+
+        mockClient.toolRouter.session.execute.mockResolvedValueOnce({
+          data: { results: true },
+          error: null,
+          log_id: '123',
+        });
+
+        await context.tools.executeSessionTool(toolSlug, body, undefined, undefined, {
+          experimental: {
+            custom_tools: [
+              {
+                slug: 'GREP',
+                name: 'Grep',
+                description: 'Search local text',
+                input_schema: { type: 'object', properties: {} },
+              },
+            ],
+          },
+        });
+
+        expect(mockClient.toolRouter.session.execute).toHaveBeenCalledWith(sessionId, {
+          tool_slug: toolSlug,
+          arguments: body.arguments,
+          enable_auto_workbench_offload: true,
+          experimental: {
+            custom_tools: [expect.objectContaining({ slug: 'GREP' })],
+          },
         });
       });
 
