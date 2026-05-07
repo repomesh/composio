@@ -104,10 +104,10 @@ export const resolveDefaultConnectedAccountsByToolkit = (
   );
 };
 
-export const resolveConnectedAccountSelection = <T extends SelectableConnectedAccount>(
-  items: ReadonlyArray<T>,
+export const resolveConnectedAccountSelection = (
+  items: ReadonlyArray<SelectableConnectedAccount>,
   selector?: string
-): T | undefined => {
+): SelectableConnectedAccount | undefined => {
   const usable = items.filter(isUsableConnectedAccount).sort(compareNewestFirst);
   if (usable.length === 0) return undefined;
 
