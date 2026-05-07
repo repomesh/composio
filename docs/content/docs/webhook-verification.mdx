@@ -204,7 +204,7 @@ Composio verifies the provider's signature on every inbound request against the 
 This hop is automatic — you don't write any code. Your responsibility is just to make sure the signing secret on the endpoint is correct:
 
 - **Composio-managed OAuth apps** — Composio sources the signing secret from the connected user's credentials; nothing to do.
-- **Your own OAuth app on a toolkit that needs manual configuration** (today: Slack, Notion) — `PATCH` the signing secret onto the endpoint as part of [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint):
+- **Your own OAuth app on a trigger whose `requires_webhook_endpoint` flag is true** — `PATCH` the signing secret onto the endpoint as part of [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint):
 
 ```bash
 curl -X PATCH "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
