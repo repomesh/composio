@@ -179,10 +179,20 @@ export class ToolRouter<
 
     const multiAccountPayload = transformToolRouterMultiAccountParams(routerConfig.multiAccount);
 
+    const connectedAccountsPayload =
+      routerConfig.connectedAccounts === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(routerConfig.connectedAccounts).map(([toolkit, ids]) => [
+              toolkit,
+              typeof ids === 'string' ? [ids] : ids,
+            ])
+          );
+
     const payload: SessionCreateParams = {
       user_id: userId,
       auth_configs: routerConfig.authConfigs,
-      connected_accounts: routerConfig.connectedAccounts,
+      connected_accounts: connectedAccountsPayload,
       toolkits: transformToolRouterToolkitsParams(routerConfig.toolkits),
       tools: transformToolRouterToolsParams(routerConfig.tools),
       tags: transformToolRouterTagsParams(routerConfig.tags),
