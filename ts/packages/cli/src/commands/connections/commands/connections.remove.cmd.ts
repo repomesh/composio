@@ -1,11 +1,9 @@
 import { Args, Command } from '@effect/cli';
-import { Effect, Schema } from 'effect';
+import { Effect } from 'effect';
+import { decodeConnectedAccountListWithFallback } from 'src/effects/decode-connected-account-list';
 import { requireAuth } from 'src/effects/require-auth';
 import type { ConnectedAccountItem } from 'src/models/connected-accounts';
-import {
-  ComposioClientSingleton,
-  ConnectedAccountListResponse,
-} from 'src/services/composio-clients';
+import { ComposioClientSingleton } from 'src/services/composio-clients';
 import {
   formatResolveCommandProjectError,
   resolveCommandProject,
@@ -109,21 +107,7 @@ export const connectionsCmd$Remove = Command.make('remove', { account }, ({ acco
         })
       )
     );
-    // Same forward-compat guard as `connected-accounts.list.cmd.ts`.
-    const result = yield* Schema.decodeUnknown(ConnectedAccountListResponse)(rawResult).pipe(
-      Effect.catchTag('ParseError', error =>
-        Effect.gen(function* () {
-          yield* ui.log.warn(
-            `Server returned a connection field this CLI does not recognize ` +
-              `(likely a newly-added status). Run "composio upgrade" to pick up ` +
-              `the latest schema. Continuing with raw response.\n\n` +
-              `Decode error: ${error.message}`
-          );
-          // Safe: `resolveAccount` / `formatAccountSummary` only read non-credential fields.
-          return rawResult as ConnectedAccountListResponse;
-        })
-      )
-    );
+    const result = yield* decodeConnectedAccountListWithFallback(rawResult);
     const resolved = resolveAccount({ accounts: result.items, selector: account });
 
     if ('error' in resolved) {

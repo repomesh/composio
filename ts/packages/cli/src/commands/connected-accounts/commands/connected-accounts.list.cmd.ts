@@ -1,11 +1,9 @@
 import { Command, Options } from '@effect/cli';
-import { Effect, Option, Schema } from 'effect';
+import { Effect, Option } from 'effect';
 import type { ConnectedAccountListParams } from '@composio/client/resources/connected-accounts';
-import {
-  ComposioClientSingleton,
-  ConnectedAccountListResponse,
-} from 'src/services/composio-clients';
+import { ComposioClientSingleton } from 'src/services/composio-clients';
 import { TerminalUI } from 'src/services/terminal-ui';
+import { decodeConnectedAccountListWithFallback } from 'src/effects/decode-connected-account-list';
 import { requireAuth } from 'src/effects/require-auth';
 import { clampLimit } from 'src/ui/clamp-limit';
 import { redact } from 'src/ui/redact';
@@ -88,23 +86,7 @@ export const connectedAccountsCmd$List = Command.make(
           })
         )
       );
-      // Forward-compat: a future Apollo status would otherwise brick the
-      // command via the closed `Schema.Literal(...)`. Degrade to raw on
-      // ParseError; formatters only read non-credential-bearing fields.
-      const result = yield* Schema.decodeUnknown(ConnectedAccountListResponse)(rawResult).pipe(
-        Effect.catchTag('ParseError', error =>
-          Effect.gen(function* () {
-            yield* ui.log.warn(
-              `Server returned a connection field this CLI does not recognize ` +
-                `(likely a newly-added status). Run "composio upgrade" to pick up ` +
-                `the latest schema. Continuing with raw response.\n\n` +
-                `Decode error: ${error.message}`
-            );
-            // Safe: formatters only read non-credential fields.
-            return rawResult as ConnectedAccountListResponse;
-          })
-        )
-      );
+      const result = yield* decodeConnectedAccountListWithFallback(rawResult);
 
       if (result.items.length === 0) {
         let hint: string;
