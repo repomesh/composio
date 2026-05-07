@@ -17,7 +17,6 @@ import {
   ToolRouterSessionPreloadConfig,
   ToolRouterSessionWarning,
   ToolRouterUpdateSessionConfig,
-  ToolRouterUpdateSessionConfigSchema,
 } from '../types/toolRouter.types';
 import {
   transformSearchResponse,
@@ -481,13 +480,7 @@ export class ToolRouterSession<
    * Mutates this session's `configVersion`, `preload`, and `warnings` in-place.
    */
   async update(config: ToolRouterUpdateSessionConfig): Promise<void> {
-    const parsed = ToolRouterUpdateSessionConfigSchema.safeParse(config);
-    if (!parsed.success) {
-      throw new ValidationError('Failed to parse update session config', {
-        cause: parsed.error,
-      });
-    }
-    const params = transformToolRouterUpdateParams(parsed.data);
+    const params = transformToolRouterUpdateParams(config);
     const response = await this.client.toolRouter.session.patch(this.sessionId, params);
     this.configVersion = response.config_version;
     this.preload = response.config.preload;

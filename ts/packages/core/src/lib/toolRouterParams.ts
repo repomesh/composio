@@ -248,7 +248,11 @@ export const transformToolRouterUpdateParams = (
     params.auth_configs = config.authConfigs;
   }
   if (config.connectedAccounts !== undefined) {
-    params.connected_accounts = config.connectedAccounts;
+    const coerced: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(config.connectedAccounts)) {
+      coerced[k] = typeof v === 'string' ? [v] : v;
+    }
+    params.connected_accounts = coerced;
   }
   if (config.manageConnections !== undefined) {
     if (config.manageConnections === null) {
