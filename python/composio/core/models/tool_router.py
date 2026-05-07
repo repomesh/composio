@@ -998,15 +998,14 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         custom_toolkits: t.Optional[t.List[ExperimentalToolkit]] = None,
     ) -> ToolRouterSession[TTool, TToolCollection]:
         """
-        Retrieve and use an existing tool router session, optionally attaching custom tools.
+        Use an existing tool router session.
 
-        When ``custom_tools`` or ``custom_toolkits`` are provided, the SDK
-        attaches them to the session so they are available for search and
-        execution.  Without customs it simply rehydrates the existing session.
+        Provide ``custom_tools`` or ``custom_toolkits`` to bind SDK-local tools
+        to the session for search and execution.
 
-        :param session_id: The session ID to retrieve
-        :param custom_tools: Optional custom tools to attach to the session.
-        :param custom_toolkits: Optional custom toolkits to attach to the session.
+        :param session_id: The session ID to use.
+        :param custom_tools: Optional custom tools to bind to the session.
+        :param custom_toolkits: Optional custom toolkits to bind to the session.
         :return: Tool router session object
 
         Example:
@@ -1015,10 +1014,10 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
 
             composio = Composio()
 
-            # Simple rehydration
+            # Use an existing session
             session = composio.use('session_123')
 
-            # Rehydration with custom tools
+            # Use an existing session with custom tools
             session = composio.use(
                 'session_123',
                 custom_tools=[my_tool],
@@ -1046,15 +1045,18 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
                     serialize_custom_toolkits(custom_toolkits)
                 )
 
-            from urllib.parse import quote
+        from urllib.parse import quote
 
-            session = self._client.post(
-                f"/api/v3.1/tool_router/session/{quote(session_id, safe='')}/attach",
-                body={"experimental": inline_custom_tools_payload},
-                cast_to=SessionRetrieveResponse,
-            )
-        else:
-            session = self._client.tool_router.session.retrieve(session_id)
+        body = (
+            {"experimental": inline_custom_tools_payload}
+            if inline_custom_tools_payload is not None
+            else {}
+        )
+        session = self._client.post(
+            f"/api/v3.1/tool_router/session/{quote(session_id, safe='')}/attach",
+            body=body,
+            cast_to=SessionRetrieveResponse,
+        )
 
         custom_tools_map: t.Optional[CustomToolsMap] = None
         user_id: t.Optional[str] = None

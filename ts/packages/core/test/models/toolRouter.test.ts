@@ -31,6 +31,7 @@ vi.mock('../../src/models/Tools', () => {
 const createMockClient = () => ({
   baseURL: 'https://api.composio.dev',
   apiKey: 'test-api-key',
+  post: vi.fn(),
   toolRouter: {
     session: {
       create: vi.fn(),
@@ -2918,13 +2919,16 @@ describe('ToolRouter', () => {
 
   describe('use method', () => {
     const sessionId = 'session_123';
+    const attachEndpoint = (id: string) =>
+      `/api/v3.1/tool_router/session/${encodeURIComponent(id)}/attach`;
 
-    it('should retrieve an existing session by ID', async () => {
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(mockSessionRetrieveResponse);
+    it('should attach an existing session by ID', async () => {
+      mockClient.post.mockResolvedValueOnce(mockSessionRetrieveResponse);
 
       const session = await toolRouter.use(sessionId);
 
-      expect(mockClient.toolRouter.session.retrieve).toHaveBeenCalledWith(sessionId);
+      expect(mockClient.post).toHaveBeenCalledWith(attachEndpoint(sessionId), { body: {} });
+      expect(mockClient.toolRouter.session.retrieve).not.toHaveBeenCalled();
       expect(session).toHaveProperty('sessionId', 'session_123');
       expect(session).toHaveProperty('mcp');
       expect(session.mcp).toEqual({
@@ -2941,6 +2945,48 @@ describe('ToolRouter', () => {
       expect(session.configVersion).toBe(7);
     });
 
+    it('should attach custom tools when provided', async () => {
+      const grepTool = createCustomTool('GREP', {
+        name: 'Grep',
+        description: 'Search local text',
+        inputParams: z.object({ pattern: z.string() }),
+        execute: vi.fn(async () => ({ matches: [] })),
+      });
+
+      mockClient.post.mockResolvedValueOnce({
+        ...mockSessionRetrieveResponse,
+        experimental: {
+          custom_tools: [
+            {
+              slug: 'SERVER_GREP',
+              original_slug: 'GREP',
+              extends_toolkit: null,
+            },
+          ],
+        },
+      });
+
+      const session = await toolRouter.use(sessionId, { customTools: [grepTool] });
+
+      expect(mockClient.post).toHaveBeenCalledWith(attachEndpoint(sessionId), {
+        body: {
+          experimental: {
+            custom_tools: [expect.objectContaining({ slug: 'GREP' })],
+          },
+        },
+      });
+      expect(mockClient.post.mock.calls[0][1].body.experimental).not.toHaveProperty(
+        'custom_toolkits'
+      );
+      expect(mockClient.toolRouter.session.retrieve).not.toHaveBeenCalled();
+      expect(session.customTools()).toEqual([
+        expect.objectContaining({
+          slug: 'SERVER_GREP',
+          name: 'Grep',
+        }),
+      ]);
+    });
+
     it('should return a session with correct session ID', async () => {
       const customResponse = {
         ...mockSessionRetrieveResponse,
@@ -2950,7 +2996,7 @@ describe('ToolRouter', () => {
         },
       };
 
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(customResponse);
+      mockClient.post.mockResolvedValueOnce(customResponse);
 
       const session = await toolRouter.use(sessionId);
 
@@ -2960,7 +3006,7 @@ describe('ToolRouter', () => {
     });
 
     it('should return a session with working tools function', async () => {
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(mockSessionRetrieveResponse);
+      mockClient.post.mockResolvedValueOnce(mockSessionRetrieveResponse);
 
       const session = await toolRouter.use(sessionId);
 
@@ -2979,7 +3025,7 @@ describe('ToolRouter', () => {
     });
 
     it('should return a session with working authorize function', async () => {
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(mockSessionRetrieveResponse);
+      mockClient.post.mockResolvedValueOnce(mockSessionRetrieveResponse);
       mockClient.toolRouter.session.link.mockResolvedValueOnce(mockLinkResponse);
 
       const session = await toolRouter.use(sessionId);
@@ -2994,7 +3040,7 @@ describe('ToolRouter', () => {
     });
 
     it('should return a session with working toolkits function', async () => {
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(mockSessionRetrieveResponse);
+      mockClient.post.mockResolvedValueOnce(mockSessionRetrieveResponse);
       mockClient.toolRouter.session.toolkits.mockResolvedValueOnce(mockToolkitsResponse);
 
       const session = await toolRouter.use(sessionId);
@@ -3022,7 +3068,7 @@ describe('ToolRouter', () => {
         session_id: 'session_2',
       };
 
-      mockClient.toolRouter.session.retrieve
+      mockClient.post
         .mockResolvedValueOnce(session1Response)
         .mockResolvedValueOnce(session2Response);
 
@@ -3031,11 +3077,13 @@ describe('ToolRouter', () => {
 
       expect(session1.sessionId).toBe('session_1');
       expect(session2.sessionId).toBe('session_2');
-      expect(mockClient.toolRouter.session.retrieve).toHaveBeenCalledTimes(2);
+      expect(mockClient.post).toHaveBeenCalledTimes(2);
+      expect(mockClient.post).toHaveBeenNthCalledWith(1, attachEndpoint('session_1'), { body: {} });
+      expect(mockClient.post).toHaveBeenNthCalledWith(2, attachEndpoint('session_2'), { body: {} });
     });
 
     it('should handle MCP server type correctly', async () => {
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(mockSessionRetrieveResponse);
+      mockClient.post.mockResolvedValueOnce(mockSessionRetrieveResponse);
 
       const session = await toolRouter.use(sessionId);
 
@@ -3043,21 +3091,21 @@ describe('ToolRouter', () => {
       expect(session.mcp.url).toBe('https://mcp.example.com/session_123');
     });
 
-    it('should throw error if session retrieve fails', async () => {
+    it('should throw error if session attach fails', async () => {
       const error = new Error('Session not found');
-      mockClient.toolRouter.session.retrieve.mockRejectedValueOnce(error);
+      mockClient.post.mockRejectedValueOnce(error);
 
       await expect(toolRouter.use(sessionId)).rejects.toThrow('Session not found');
-      expect(mockClient.toolRouter.session.retrieve).toHaveBeenCalledWith(sessionId);
+      expect(mockClient.post).toHaveBeenCalledWith(attachEndpoint(sessionId), { body: {} });
     });
 
-    it('should handle retrieve with different tool lists', async () => {
+    it('should handle attach with different tool lists', async () => {
       const customResponse = {
         ...mockSessionRetrieveResponse,
         tool_router_tools: ['CUSTOM_TOOL_1', 'CUSTOM_TOOL_2'],
       };
 
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(customResponse);
+      mockClient.post.mockResolvedValueOnce(customResponse);
 
       const session = await toolRouter.use(sessionId);
 
@@ -3067,7 +3115,7 @@ describe('ToolRouter', () => {
 
     it('should be independent from create method', async () => {
       mockClient.toolRouter.session.create.mockResolvedValueOnce(mockSessionCreateResponse);
-      mockClient.toolRouter.session.retrieve.mockResolvedValueOnce(mockSessionRetrieveResponse);
+      mockClient.post.mockResolvedValueOnce(mockSessionRetrieveResponse);
 
       // Create a new session
       const createdSession = await toolRouter.create('user_123');
@@ -3079,7 +3127,8 @@ describe('ToolRouter', () => {
 
       // Both should have been called once
       expect(mockClient.toolRouter.session.create).toHaveBeenCalledTimes(1);
-      expect(mockClient.toolRouter.session.retrieve).toHaveBeenCalledTimes(1);
+      expect(mockClient.post).toHaveBeenCalledTimes(1);
+      expect(mockClient.toolRouter.session.retrieve).not.toHaveBeenCalled();
     });
   });
 });

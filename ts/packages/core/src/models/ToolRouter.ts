@@ -35,7 +35,11 @@ import {
   SessionCreateResponse,
   SessionRetrieveResponse,
 } from '@composio/client/resources/tool-router/session/session.mjs';
-import type { CustomTool, CustomToolkit, InlineCustomToolsWirePayload } from '../types/customTool.types';
+import type {
+  CustomTool,
+  CustomToolkit,
+  InlineCustomToolsWirePayload,
+} from '../types/customTool.types';
 import {
   transformToolRouterTagsParams,
   transformToolRouterToolsParams,
@@ -252,7 +256,6 @@ export class ToolRouter<
     const customToolkits = options?.customToolkits;
     const hasCustoms = !!(customTools?.length || customToolkits?.length);
 
-    let session: SessionRetrieveResponse;
     let inlineCustomToolsPayload: InlineCustomToolsWirePayload | undefined;
 
     if (hasCustoms) {
@@ -262,17 +265,15 @@ export class ToolRouter<
         : undefined;
 
       inlineCustomToolsPayload = {
-        custom_tools: serializedTools,
-        custom_toolkits: serializedToolkits,
+        ...(serializedTools ? { custom_tools: serializedTools } : {}),
+        ...(serializedToolkits ? { custom_toolkits: serializedToolkits } : {}),
       };
-
-      session = await this.client.post<SessionRetrieveResponse>(
-        `/api/v3.1/tool_router/session/${encodeURIComponent(id)}/attach`,
-        { body: { experimental: inlineCustomToolsPayload } }
-      );
-    } else {
-      session = await this.client.toolRouter.session.retrieve(id);
     }
+
+    const session = await this.client.post<SessionRetrieveResponse>(
+      `/api/v3.1/tool_router/session/${encodeURIComponent(id)}/attach`,
+      { body: inlineCustomToolsPayload ? { experimental: inlineCustomToolsPayload } : {} }
+    );
 
     let customToolsMap: CustomToolsMap | undefined;
     let userId: string | undefined;
