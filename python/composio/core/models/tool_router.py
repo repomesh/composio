@@ -1046,6 +1046,11 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         Provide ``custom_tools`` or ``custom_toolkits`` to bind SDK-local tools
         to the session for search and execution.
 
+        If the existing session has ``preload.tools = "all"``, every bound
+        custom tool is also exposed via ``session.tools()`` and re-injected
+        with ``preload=True`` on subsequent search/execute calls. A custom tool
+        with explicit ``preload=False`` still opts out.
+
         :param session_id: The session ID to use.
         :param custom_tools: Optional custom tools to bind to the session.
         :param custom_toolkits: Optional custom toolkits to bind to the session.
@@ -1092,15 +1097,14 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         else:
             session = self._client.tool_router.session.retrieve(session_id)
 
-        # For use(..., custom_tools=...), we only learn the existing session's
-        # top-level preload config after attach returns. If that existing config
-        # is preload.tools = "all", custom tools should follow the same
-        # SDK-local direct exposure rule.
         default_custom_preload = _preloads_all_custom_tools(session.config.preload)
         if has_customs and default_custom_preload:
-            # Attach already happened above with the caller's explicit custom
-            # preload hints. This rebuild only changes the payload stored on
-            # ToolRouterSession and reused by future search/execute calls.
+            # preload.tools = "all" on the existing session is server-authoritative:
+            # the backend exposes every custom tool regardless of per-definition
+            # preload flags, so the initial attach above (which used the caller's
+            # explicit hints) doesn't need re-sending. We only rebuild the in-memory
+            # payload so future search/execute calls re-inject with preload=True and
+            # session.tools() locally mirrors what the server returns.
             inline_custom_tools_payload = _prepare_inline_custom_tools(
                 custom_tools=custom_tools,
                 custom_toolkits=custom_toolkits,

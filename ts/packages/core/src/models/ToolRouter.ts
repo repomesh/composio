@@ -293,15 +293,14 @@ export class ToolRouter<
       session = await this.client.toolRouter.session.retrieve(id);
     }
 
-    // For use(...customTools), we only learn the existing session's top-level
-    // preload config after attach returns. If that existing config is
-    // preload.tools = "all", custom tools should follow the same SDK-local
-    // direct exposure rule.
     const defaultCustomPreload = preloadsAllCustomTools(session.config.preload);
     if (hasCustoms && defaultCustomPreload) {
-      // Attach already happened above with the caller's explicit custom preload
-      // hints. This rebuild only changes the payload stored on ToolRouterSession
-      // and reused by future search/execute calls.
+      // preload.tools = "all" on the existing session is server-authoritative:
+      // the backend exposes every custom tool regardless of per-definition
+      // preload flags, so the initial attach above (which used the caller's
+      // explicit hints) doesn't need re-sending. We only rebuild the in-memory
+      // payload so future search/execute calls re-inject with preload=true and
+      // session.tools() locally mirrors what the server returns.
       inlineCustomToolsPayload = prepareInlineCustomTools({
         customTools,
         customToolkits,

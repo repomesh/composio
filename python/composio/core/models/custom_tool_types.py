@@ -111,7 +111,6 @@ class CustomTool:
 
 
 CustomToolWireDefinition = session_create_params.ExperimentalCustomTool
-CustomToolkitToolWireDefinition = session_create_params.ExperimentalCustomToolkitTool
 CustomToolkitWireDefinition = session_create_params.ExperimentalCustomToolkit
 
 
