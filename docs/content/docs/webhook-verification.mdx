@@ -6,6 +6,10 @@ keywords: [webhook, verification, signature, HMAC, security]
 
 Composio signs every webhook request. Always verify signatures in production to ensure payloads are authentic.
 
+<Callout>
+**Two signatures, two responsibilities.** Composio verifies provider signatures on the **ingress** hop (provider → Composio); you verify Composio's signature on the **delivery** hop (Composio → your endpoint). This page covers the delivery hop. Ingress verification is automatic for V2 endpoints — see [Ingress signature verification (V2)](#ingress-signature-verification-v2) below.
+</Callout>
+
 ## SDK verification
 
 The SDK handles signature verification, payload parsing, and version detection (V1, V2, V3).
@@ -193,11 +197,29 @@ Metadata fields are mixed into the `data` object alongside event data.
   </Tab>
 </Tabs>
 
+## Ingress signature verification (V2)
+
+For V2 toolkits — currently Slack — Composio verifies the provider's signature against the signing secret stored on the [webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints) **before** any trigger fires. Unsigned or tampered requests are rejected at ingress with `400`, so third parties cannot spoof events onto your triggers.
+
+You don't write any code for this hop — your responsibility is to store the right signing secret on the endpoint:
+
+```bash
+curl -X PATCH "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{ "data": { "webhook_signing_secret": "<YOUR_SLACK_SIGNING_SECRET>" } }'
+```
+
+Composio uses the algorithm appropriate for each provider — HMAC-SHA256 for Slack, Ed25519 or shared-token matching for others. For providers that sign a request timestamp (Slack does), replay protection additionally rejects requests outside the allowed skew window.
+
+V1 ingress URLs (`/api/v3/trigger_instances/{toolkit}/{project_id}/handle`) continue to work as they do today; this section is only relevant for endpoints you've created on V2.
+
 ## What to read next
 
 <Cards>
-  <Card icon={<Zap />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Set up webhooks and SDK subscriptions to receive trigger events" />
+  <Card icon={<Plug />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Set up webhooks and SDK subscriptions to receive trigger events" />
+  <Card icon={<RouteIcon />} title="Configuring webhook endpoints" href="/docs/setting-up-triggers/configuring-webhook-endpoints" description="V2 ingress setup: store the provider's signing secret on the endpoint" />
   <Card icon={<Zap />} title="Triggers overview" href="/docs/triggers" description="How Composio delivers event data from connected apps" />
-  <Card icon={<Zap />} title="Connection expiry events" href="/docs/subscribing-to-connection-expiry-events" description="Detect when OAuth connections expire and prompt re-authentication" />
+  <Card icon={<Key />} title="Connection expiry events" href="/docs/subscribing-to-connection-expiry-events" description="Detect when OAuth connections expire and prompt re-authentication" />
 </Cards>
 

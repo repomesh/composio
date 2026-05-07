@@ -1,34 +1,79 @@
 ---
 title: Triggers
 description: Understand how Composio delivers event data from connected apps
-keywords: [triggers, webhooks, events, polling, concepts]
+keywords: [triggers, webhooks, events, polling, webhook endpoints, concepts]
 ---
 
 When events occur in apps, like a new Slack message, a GitHub commit, or an incoming email, triggers send event data to your application as structured payloads.
 
 <Figure src="/images/triggers-flow.svg" srcDark="/images/triggers-flow-dark.svg" alt="Triggers flow: Connected apps send events to Composio, which delivers them to your webhook endpoint via HTTP POST" caption="How triggers deliver events from apps to your application" />
 
-There are two delivery types:
+## Three delivery models
 
-- **Webhook triggers**: Apps like GitHub and Slack push events to Composio in real time. When an event fires, Composio forwards the payload to your webhook endpoint.
-- **Polling triggers**: For apps that don't support outgoing webhooks (e.g., Gmail), Composio polls for new data on a schedule. For Composio managed auth, polling intervals have a minimum of 15 minutes. Expect delays between the source event and delivery.
+Every Composio trigger fits one of three delivery models. The model is a property of the trigger type, not something you choose — but knowing which model your trigger uses tells you exactly what setup is required.
 
-## Working with triggers
-
-1. **Configure** your webhook endpoint so Composio knows where to deliver events
-2. **Discover** available trigger types for a toolkit (e.g., `GITHUB_COMMIT_EVENT`)
-3. **Create** an active trigger scoped to a user's connected account
-4. **Receive events**: Composio sends payloads to your endpoint
-5. **Manage**: enable, disable, or delete triggers as needed
+| Delivery model | What Composio does | What you do |
+|---|---|---|
+| **Polling** | Composio polls the provider on a schedule (15-minute minimum on Composio managed auth) | Just create the trigger |
+| **User-level webhook** | Composio registers a per-user webhook with the provider when you create the trigger, and deregisters it when you delete the trigger | Just create the trigger |
+| **App-level webhook endpoint** | Composio gives you one ingress URL per OAuth app; you point the provider's app dashboard at it once | Configure a [webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints) for the OAuth app, then create triggers normally |
 
 <Accordions>
+<Accordion title="Which model does each toolkit use?">
+- **Polling** — toolkits without outbound webhooks (e.g. Gmail).
+- **User-level webhook** — most webhook-capable toolkits (Asana, Outlook, GitHub repo events, and so on). Composio handles the provider-side webhook lifecycle for you.
+- **App-level webhook endpoint** (V2) — toolkits whose providers post events at the OAuth-app level rather than per-user, currently **Slack**. More toolkits will move to V2 over time. See [Webhook Triggers V2](/docs/changelog/2026/04/27) for the full announcement.
+</Accordion>
 <Accordion title="What is a trigger type?">
 A trigger type is a template that defines what event to listen for and what configuration is required. For example, `GITHUB_COMMIT_EVENT` requires an `owner` and `repo`. Each toolkit exposes its own set of trigger types.
 </Accordion>
-<Accordion title="What happens when you create an active trigger?">
-When you create a trigger from a type, it's scoped to a specific [user and connected account](/docs/users-and-sessions). For example, creating a `GITHUB_COMMIT_EVENT` trigger for user `alice` on the `composio` repo produces a trigger with its own ID.
+<Accordion title="What is a trigger instance?">
+When you create a trigger from a type, it's scoped to a specific [user and connected account](/docs/users-and-sessions). For example, creating a `GITHUB_COMMIT_EVENT` trigger for user `alice` on the `composio` repo produces a trigger instance with its own `ti_*` ID that you can enable, disable, or delete independently.
 </Accordion>
 </Accordions>
+
+## End-to-end flow
+
+For every trigger, regardless of delivery model, events take the same path on the way to your application:
+
+```
+provider event ──▶ Composio ingress ──▶ trigger fan-out ──▶ webhook subscription ──▶ your endpoint
+```
+
+Two webhook URLs sit on opposite sides of Composio. Don't confuse them:
+
+| URL | Direction | Who configures it |
+|---|---|---|
+| **Ingress** (`/api/v3.1/trigger_instances/.../handle` for V1, `/api/v3.1/webhook_ingress/...` for V2) | Provider → Composio | Composio (V1, automatic) or you, once per OAuth app (V2 — see [Configuring webhook endpoints](/docs/setting-up-triggers/configuring-webhook-endpoints)) |
+| **Webhook subscription** (your URL) | Composio → your application | You, once per project — see [Subscribing to triggers](/docs/setting-up-triggers/subscribing-to-events) |
+
+Composio verifies signatures on both hops:
+
+- On ingress, V2 endpoints verify the provider's signature against the signing secret you stored on the endpoint. Unsigned or tampered requests are rejected before any trigger fires.
+- On delivery, every webhook Composio sends to your endpoint is signed with your subscription secret — verify it as described in [Verifying webhooks](/docs/webhook-verification).
+
+## Working with triggers
+
+<Steps>
+<Step>
+**Configure delivery to your application.** Create a [webhook subscription](/docs/setting-up-triggers/subscribing-to-events) so Composio knows which URL to deliver events to. This is a one-time step per project.
+</Step>
+<Step>
+**Configure ingress (V2 toolkits only).** For toolkits on V2 (currently Slack), [create a webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints) and point the provider's app dashboard at the URL Composio returns. One-time per OAuth app.
+</Step>
+<Step>
+**Discover** available trigger types for a toolkit (e.g. `GITHUB_COMMIT_EVENT`).
+</Step>
+<Step>
+**Create** an active trigger scoped to a user's connected account — see [Creating triggers](/docs/setting-up-triggers/creating-triggers).
+</Step>
+<Step>
+**Receive events** at your webhook subscription URL, [verify the signature](/docs/webhook-verification), and route on `metadata.trigger_slug`.
+</Step>
+<Step>
+**Manage** triggers as needed — see [Managing triggers](/docs/setting-up-triggers/managing-triggers).
+</Step>
+</Steps>
 
 <Callout>
 Triggers are scoped to a connected account. If you haven't set up authentication yet, see [Authentication](/docs/authentication).
@@ -37,9 +82,10 @@ Triggers are scoped to a connected account. If you haven't set up authentication
 ## Next steps
 
 <Cards>
-  <Card title="Creating triggers" href="/docs/setting-up-triggers/creating-triggers" description="Create trigger instances via the dashboard or SDK" />
-  <Card title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Receive trigger events via webhooks or SDK subscriptions" />
-  <Card title="Verifying webhooks" href="/docs/webhook-verification" description="Verify webhook signatures and understand payload versions" />
-  <Card title="Managing triggers" href="/docs/setting-up-triggers/managing-triggers" description="Discover, list, enable, disable, and delete triggers" />
-  <Card title="Example: Gmail labeler" href="/cookbooks/gmail-labeler" description="Build an automated email labeling agent using triggers" />
+  <Card icon={<Zap />} title="Creating triggers" href="/docs/setting-up-triggers/creating-triggers" description="Create trigger instances via the dashboard or SDK" />
+  <Card icon={<RouteIcon />} title="Configuring webhook endpoints" href="/docs/setting-up-triggers/configuring-webhook-endpoints" description="One-time setup for V2 toolkits like Slack: create an ingress URL, store the signing secret, point the provider at it" />
+  <Card icon={<Plug />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Receive trigger events via webhooks or SDK subscriptions" />
+  <Card icon={<ShieldCheck />} title="Verifying webhooks" href="/docs/webhook-verification" description="Verify webhook signatures and understand payload versions" />
+  <Card icon={<Wrench />} title="Managing triggers" href="/docs/setting-up-triggers/managing-triggers" description="Discover, list, enable, disable, and delete triggers" />
+  <Card icon={<BookOpen />} title="Example: Gmail labeler" href="/cookbooks/gmail-labeler" description="Build an automated email labeling agent using triggers" />
 </Cards>

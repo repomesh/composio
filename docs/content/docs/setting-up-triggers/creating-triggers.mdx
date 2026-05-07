@@ -10,6 +10,7 @@ Create a trigger to start receiving events. A trigger watches for a specific eve
 Before creating triggers, ensure you have:
 - An [auth config](/docs/authentication#how-composio-manages-authentication) for the toolkit you want to monitor
 - A connected account for the user whose events you want to capture
+- For V2 toolkits (Slack today), a [webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints) configured for the OAuth app — without it, the upsert call returns `400`. See the [delivery models](/docs/triggers#three-delivery-models) table to check whether your toolkit needs this.
 </Callout>
 
 You can create triggers using the [SDK](#using-the-sdk) or the Composio [dashboard](#using-the-dashboard).
@@ -89,6 +90,7 @@ Trigger instances default to the `'latest'` toolkit version. If your code parses
 ## What to read next
 
 <Cards>
-  <Card icon={<Zap />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Receive trigger events via webhooks or SDK subscriptions" />
-  <Card icon={<Zap />} title="Managing triggers" href="/docs/setting-up-triggers/managing-triggers" description="List, enable, disable, and delete trigger instances" />
+  <Card icon={<RouteIcon />} title="Configuring webhook endpoints" href="/docs/setting-up-triggers/configuring-webhook-endpoints" description="Required for V2 toolkits (Slack today): register the provider's signing secret and ingress URL" />
+  <Card icon={<Plug />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Receive trigger events via webhooks or SDK subscriptions" />
+  <Card icon={<Wrench />} title="Managing triggers" href="/docs/setting-up-triggers/managing-triggers" description="List, enable, disable, and delete trigger instances" />
 </Cards>

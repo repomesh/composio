@@ -2,6 +2,7 @@
   "title": "Using Triggers",
   "pages": [
     "creating-triggers",
+    "configuring-webhook-endpoints",
     "subscribing-to-events",
     "managing-triggers"
   ]
