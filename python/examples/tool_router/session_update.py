@@ -27,7 +27,7 @@ session.update(
     preload={"tools": ["GITHUB_CREATE_ISSUE"]},
 )
 
-print(f"\nAfter update:")
+print("\nAfter update:")
 print(f"Preload: {session.preload}")
 
 # Update: disable workbench entirely
@@ -35,11 +35,11 @@ session.update(
     workbench={"enable": False},
 )
 
-print(f"\nAfter disabling workbench: done")
+print("\nAfter disabling workbench: done")
 
 # Update: clear manage_connections by passing None
 session.update(
     manage_connections=None,
 )
 
-print(f"\nAfter clearing manage_connections: done")
+print("\nAfter clearing manage_connections: done")
