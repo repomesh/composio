@@ -100,6 +100,7 @@ export const connectedAccountsCmd$List = Command.make(
                 `the latest schema. Continuing with raw response.\n\n` +
                 `Decode error: ${error.message}`
             );
+            // Safe: formatters only read non-credential fields.
             return rawResult as ConnectedAccountListResponse;
           })
         )

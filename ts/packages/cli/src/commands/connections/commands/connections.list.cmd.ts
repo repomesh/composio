@@ -83,6 +83,7 @@ export const connectionsCmd$List = Command.make('list', { toolkit }, ({ toolkit 
               `the latest schema. Continuing with raw response.\n\n` +
               `Decode error: ${error.message}`
           );
+          // Safe: `formatConnectionsJson` only reads non-credential fields.
           return rawResult as ConnectedAccountListResponse;
         })
       )

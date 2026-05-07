@@ -119,6 +119,7 @@ export const connectionsCmd$Remove = Command.make('remove', { account }, ({ acco
               `the latest schema. Continuing with raw response.\n\n` +
               `Decode error: ${error.message}`
           );
+          // Safe: `resolveAccount` / `formatAccountSummary` only read non-credential fields.
           return rawResult as ConnectedAccountListResponse;
         })
       )
