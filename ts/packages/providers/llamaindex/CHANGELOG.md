@@ -1,6 +1,10 @@
 # @composio/llamaindex
 
-## 1.0.0
+## 0.9.0
+
+### Minor Changes
+
+- Bumped to align with `@composio/core@0.9.0` for the Tool Router release train. No public-API change in this provider package.
 
 ### Patch Changes
 
