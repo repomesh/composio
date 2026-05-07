@@ -216,16 +216,7 @@ Paste the `webhook_url` from step 2 into the provider's app dashboard:
 - **Slack** → Event Subscriptions → Request URL
 - **Notion** → Webhook Endpoints (in the integration's settings)
 
-Composio responds to the provider's verification challenge automatically (Slack `url_verification`, Notion's verification token, and so on) — you don't write any handshake code on your side.
-
-### Step 5: Confirm the endpoint is verified
-
-```bash
-curl "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
-  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>"
-```
-
-A populated `verified_at` timestamp on the response means the provider has completed the handshake. You can now retry the trigger creation call from [Using the SDK](#using-the-sdk).
+Composio responds to the provider's verification challenge automatically (Slack `url_verification`, Notion's verification token, and so on) — you don't write any handshake code on your side. Once the provider saves the URL, retry the trigger creation call from [Using the SDK](#using-the-sdk).
 
 ### Updating an endpoint
 
@@ -248,6 +239,13 @@ curl -X POST "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_
 ```
 
 The `webhook_url` is immutable for the lifetime of the endpoint — rotating the signing secret on the provider side is a `PATCH` on the existing endpoint, not a new one.
+
+To inspect a single endpoint (handy for checking `verified_at` after a provider re-save):
+
+```bash
+curl "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>"
+```
 
 To list every endpoint in the current project:
 
