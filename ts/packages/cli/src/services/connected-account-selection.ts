@@ -1,5 +1,17 @@
 import type { ConnectedAccountItem } from 'src/models/connected-accounts';
 
+/**
+ * `ConnectedAccountItem` widened to allow an `'UNKNOWN'` status sentinel
+ * used by the CLI when the server returns a status the schema does not
+ * recognize (e.g. a newly-added Apollo enum value). Selection helpers only
+ * pick `'ACTIVE'` accounts, so any other label — including `'UNKNOWN'` —
+ * is filtered out, but storing the honest sentinel avoids falsely tagging
+ * the row as `'INACTIVE'` (which means "user-disabled" specifically).
+ */
+export type SelectableConnectedAccount = Omit<ConnectedAccountItem, 'status'> & {
+  readonly status: ConnectedAccountItem['status'] | 'UNKNOWN';
+};
+
 export type CachedConnectedAccountSummary = {
   readonly id: string;
   readonly alias: string | null;
@@ -31,7 +43,7 @@ const compareSummaryNewestFirst = (
   Math.max(parseTimestamp(left.updatedAt), parseTimestamp(left.createdAt));
 
 export const isUsableConnectedAccount = (
-  item: Pick<ConnectedAccountItem, 'status' | 'is_disabled'>
+  item: Pick<SelectableConnectedAccount, 'status' | 'is_disabled'>
 ): boolean => item.status === 'ACTIVE' && !item.is_disabled;
 
 export const toCachedConnectedAccountSummary = (
@@ -45,7 +57,7 @@ export const toCachedConnectedAccountSummary = (
 });
 
 export const groupCachedConnectedAccountsByToolkit = (
-  items: ReadonlyArray<ConnectedAccountItem>
+  items: ReadonlyArray<SelectableConnectedAccount>
 ): Record<string, ReadonlyArray<CachedConnectedAccountSummary>> => {
   const grouped = new Map<string, CachedConnectedAccountSummary[]>();
 
@@ -68,9 +80,9 @@ export const groupCachedConnectedAccountsByToolkit = (
 };
 
 export const resolveDefaultConnectedAccountsByToolkit = (
-  items: ReadonlyArray<ConnectedAccountItem>
+  items: ReadonlyArray<SelectableConnectedAccount>
 ): Record<string, string> => {
-  const grouped = new Map<string, ConnectedAccountItem[]>();
+  const grouped = new Map<string, SelectableConnectedAccount[]>();
 
   for (const item of items) {
     if (!isUsableConnectedAccount(item)) continue;
@@ -92,10 +104,10 @@ export const resolveDefaultConnectedAccountsByToolkit = (
   );
 };
 
-export const resolveConnectedAccountSelection = (
-  items: ReadonlyArray<ConnectedAccountItem>,
+export const resolveConnectedAccountSelection = <T extends SelectableConnectedAccount>(
+  items: ReadonlyArray<T>,
   selector?: string
-): ConnectedAccountItem | undefined => {
+): T | undefined => {
   const usable = items.filter(isUsableConnectedAccount).sort(compareNewestFirst);
   if (usable.length === 0) return undefined;
 
