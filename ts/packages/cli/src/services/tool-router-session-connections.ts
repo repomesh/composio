@@ -94,79 +94,71 @@ export const resolveToolRouterSessionConnections = (
       limit: 1000,
     })
   ).pipe(
-    Effect.flatMap(response =>
-      Effect.gen(function* () {
-        const items = (response.items ?? []) as ReadonlyArray<RawConnectedAccount>;
-        const unknownStatuses = new Set<string>();
-        const normalizedItems: SelectableConnectedAccount[] = items.map(item => {
-          const normalizedStatus = normalizeConnectedAccountStatus(item.status);
-          if (normalizedStatus === 'UNKNOWN' && item.status) {
-            unknownStatuses.add(item.status);
-          }
-          return {
-            id: item.id,
-            alias: item.alias ?? null,
-            word_id: item.word_id ?? null,
-            status: normalizedStatus,
-            status_reason: null,
-            is_disabled: item.is_disabled ?? false,
-            user_id: item.user_id ?? '',
-            toolkit: {
-              slug: item.toolkit?.slug ?? '',
-            },
-            auth_config: {
-              id: item.auth_config?.id ?? '',
-              auth_scheme: '',
-              is_composio_managed: item.auth_config?.is_composio_managed ?? true,
-              is_disabled: false,
-            },
-            created_at: item.created_at ?? '',
-            updated_at: item.updated_at ?? '',
-            test_request_endpoint: '',
-          } satisfies SelectableConnectedAccount;
-        });
-
-        if (unknownStatuses.size > 0) {
-          // Service-layer code: peers use `Effect.logDebug` for diagnostic
-          // signal. The user-facing `ui.log.warn` channel runs from command
-          // layers (e.g. `connected-accounts.list.cmd.ts`).
-          yield* Effect.logDebug(
-            `[ToolRouterSession] received unrecognized connected_account.status ` +
-              `value(s): ${[...unknownStatuses].join(', ')}. Treating as 'UNKNOWN' ` +
-              `(not selectable). Run "composio upgrade" to pick up the latest schema.`
-          );
+    Effect.map(response => {
+      const items = (response.items ?? []) as ReadonlyArray<RawConnectedAccount>;
+      const unknownStatuses = new Set<string>();
+      const normalizedItems: SelectableConnectedAccount[] = items.map(item => {
+        const normalizedStatus = normalizeConnectedAccountStatus(item.status);
+        if (normalizedStatus === 'UNKNOWN' && item.status) {
+          unknownStatuses.add(item.status);
         }
-
-        const connectedToolkits = new Set<string>();
-        const explicitAccountsByToolkit = new Map<string, RawConnectedAccount>();
-
-        for (const item of items) {
-          const toolkit = item.toolkit?.slug?.toLowerCase().trim();
-          if (!toolkit || item.is_disabled) continue;
-
-          connectedToolkits.add(toolkit);
-
-          // Tool Router already handles Composio-managed auth well.
-          // Explicitly pin non-managed auth configs/accounts so consumer sessions
-          // can execute against custom-auth toolkits like PostHog.
-          if (item.auth_config?.is_composio_managed !== false) {
-            continue;
-          }
-
-          const current = explicitAccountsByToolkit.get(toolkit);
-          if (!current || isNewerAccount(item, current)) {
-            explicitAccountsByToolkit.set(toolkit, item);
-          }
-        }
-
-        const authConfigs: Record<string, string> = {};
-        for (const [toolkit, item] of explicitAccountsByToolkit) {
-          const authConfigId = item.auth_config?.id?.trim();
-          if (!authConfigId) continue;
-          authConfigs[toolkit] = authConfigId;
-        }
-
         return {
+          id: item.id,
+          alias: item.alias ?? null,
+          word_id: item.word_id ?? null,
+          status: normalizedStatus,
+          status_reason: null,
+          is_disabled: item.is_disabled ?? false,
+          user_id: item.user_id ?? '',
+          toolkit: {
+            slug: item.toolkit?.slug ?? '',
+          },
+          auth_config: {
+            id: item.auth_config?.id ?? '',
+            auth_scheme: '',
+            is_composio_managed: item.auth_config?.is_composio_managed ?? true,
+            is_disabled: false,
+          },
+          created_at: item.created_at ?? '',
+          updated_at: item.updated_at ?? '',
+          test_request_endpoint: '',
+        } satisfies SelectableConnectedAccount;
+      });
+
+      const connectedToolkits = new Set<string>();
+      const explicitAccountsByToolkit = new Map<string, RawConnectedAccount>();
+
+      // Second pass over the raw items — needs untouched `auth_config` and
+      // `is_disabled` metadata that the normalized projection drops.
+      for (const item of items) {
+        const toolkit = item.toolkit?.slug?.toLowerCase().trim();
+        if (!toolkit || item.is_disabled) continue;
+
+        connectedToolkits.add(toolkit);
+
+        // Tool Router already handles Composio-managed auth well.
+        // Explicitly pin non-managed auth configs/accounts so consumer sessions
+        // can execute against custom-auth toolkits like PostHog.
+        if (item.auth_config?.is_composio_managed !== false) {
+          continue;
+        }
+
+        const current = explicitAccountsByToolkit.get(toolkit);
+        if (!current || isNewerAccount(item, current)) {
+          explicitAccountsByToolkit.set(toolkit, item);
+        }
+      }
+
+      const authConfigs: Record<string, string> = {};
+      for (const [toolkit, item] of explicitAccountsByToolkit) {
+        const authConfigId = item.auth_config?.id?.trim();
+        if (!authConfigId) continue;
+        authConfigs[toolkit] = authConfigId;
+      }
+
+      return {
+        unknownStatuses,
+        context: {
           connectedToolkits: [...connectedToolkits],
           authConfigs: Object.keys(authConfigs).length > 0 ? authConfigs : undefined,
           connectedAccounts: (() => {
@@ -177,9 +169,22 @@ export const resolveToolRouterSessionConnections = (
             const grouped = groupCachedConnectedAccountsByToolkit(normalizedItems);
             return Object.keys(grouped).length > 0 ? grouped : undefined;
           })(),
-        } satisfies ToolRouterSessionConnectionContext;
-      })
+        } satisfies ToolRouterSessionConnectionContext,
+      };
+    }),
+    Effect.tap(({ unknownStatuses }) =>
+      unknownStatuses.size > 0
+        ? // Service-layer code: peers use `Effect.logDebug` for diagnostic
+          // signal. The user-facing `ui.log.warn` channel runs from command
+          // layers (e.g. `connected-accounts.list.cmd.ts`).
+          Effect.logDebug(
+            `[ToolRouterSession] received unrecognized connected_account.status ` +
+              `value(s): ${[...unknownStatuses].join(', ')}. Treating as 'UNKNOWN' ` +
+              `(not selectable). Run "composio upgrade" to pick up the latest schema.`
+          )
+        : Effect.void
     ),
+    Effect.map(({ context }) => context),
     Effect.catchAll(() =>
       Effect.succeed({
         connectedToolkits: [],
