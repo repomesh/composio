@@ -6,10 +6,6 @@ keywords: [webhook, verification, signature, HMAC, security]
 
 Composio signs every webhook request. Always verify signatures in production to ensure payloads are authentic.
 
-<Callout>
-**Two signatures, two responsibilities.** Composio verifies provider signatures on the **ingress** hop automatically. You verify Composio's signature on the **delivery** hop — this page covers that.
-</Callout>
-
 ## SDK verification
 
 The SDK handles signature verification, payload parsing, and version detection (V1, V2, V3).
