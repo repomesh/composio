@@ -116,7 +116,7 @@ Pinning a toolkit to a specific version so your integration uses a consistent se
 </GlossaryTerm>
 
 <GlossaryTerm name="Trigger">
-Sends structured payloads to your application when something happens in a connected app. Three delivery models: **polling** (Composio polls the provider, e.g. Gmail), **user-level webhook** (Composio auto-registers a per-user webhook with the provider, e.g. Asana, GitHub), and **app-level webhook endpoint** (V2; you configure a webhook endpoint per OAuth app, e.g. Slack). See [Triggers](/docs/triggers).
+Sends structured payloads to your application when something happens in a connected app. Two delivery types: **webhook** (the provider pushes events in real time, e.g. Slack, GitHub, Asana) and **polling** (Composio polls the provider on a schedule, e.g. Gmail). See [Triggers](/docs/triggers).
 </GlossaryTerm>
 
 <GlossaryTerm name="Trigger Instance">
@@ -124,7 +124,7 @@ A specific, active trigger scoped to a user's connected account.
 </GlossaryTerm>
 
 <GlossaryTerm name="Webhook Endpoint">
-A V2 ingress URL Composio creates per OAuth app for toolkits where the provider posts events at the app level (currently Slack). Stores the provider's signing secret so Composio can verify every inbound request before fanning out to triggers. See [Configuring webhook endpoints](/docs/setting-up-triggers/configuring-webhook-endpoints).
+The ingress URL Composio issues per OAuth app for webhook triggers, plus the signing secret used to verify each inbound request. Composio configures the endpoint for you in most cases; for some toolkits (today: Slack, Notion) when you bring your own OAuth app, you configure it yourself. See [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint).
 </GlossaryTerm>
 
 <GlossaryTerm name="Webhook Subscription">

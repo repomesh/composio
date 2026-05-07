@@ -1,7 +1,7 @@
 ---
 title: Creating triggers
-description: Create trigger instances via the dashboard or SDK
-keywords: [triggers, create trigger, trigger config]
+description: Configure the webhook endpoint when needed, then create trigger instances via the dashboard or SDK
+keywords: [triggers, create trigger, trigger config, webhook endpoint, signing secret]
 ---
 
 Create a trigger to start receiving events. A trigger watches for a specific event (e.g., `GITHUB_COMMIT_EVENT`) on a specific user's connected account. For an overview of how triggers work, see [Triggers](/docs/triggers).
@@ -10,10 +10,168 @@ Create a trigger to start receiving events. A trigger watches for a specific eve
 Before creating triggers, ensure you have:
 - An [auth config](/docs/authentication#how-composio-manages-authentication) for the toolkit you want to monitor
 - A connected account for the user whose events you want to capture
-- For V2 toolkits (Slack today), a [webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints) configured for the OAuth app — without it, the upsert call returns `400`. See the [delivery models](/docs/triggers#three-delivery-models) table to check whether your toolkit needs this.
+- For toolkits where you need to register the webhook endpoint yourself (today: Slack and Notion, when you bring your own OAuth app), the [webhook endpoint configured](#configuring-the-webhook-endpoint) before you create any triggers — see the section below to check whether yours applies.
 </Callout>
 
-You can create triggers using the [SDK](#using-the-sdk) or the Composio [dashboard](#using-the-dashboard).
+## Configuring the webhook endpoint
+
+For a webhook trigger to fire, the provider has to know where to post events. For most toolkits, Composio handles this for you — you don't see or set up anything. For a small set of toolkits (today: **Slack** and **Notion**, with more arriving on the same flow), you set up a `webhook_endpoint` once per OAuth app: paste the provider's signing secret onto it, take the URL Composio returns, and paste that URL into the provider's app dashboard.
+
+<Callout>
+**You only do this if you bring your own OAuth app.** With Composio-managed OAuth apps, the webhook endpoint is already provisioned and you can skip ahead to [Using the SDK](#using-the-sdk).
+</Callout>
+
+### Step 1: Discover whether you need to configure anything
+
+Call the schema endpoint for your toolkit. The response is the source of truth.
+
+```bash
+curl "https://backend.composio.dev/api/v3.1/webhook_endpoints/schema?toolkit_slug={toolkit_slug}" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>"
+```
+
+- **Empty / no `setup_fields`** → Composio handles the endpoint for you (e.g. Asana). Skip the rest of this section and go to [Using the SDK](#using-the-sdk).
+- **One or more `setup_fields`** → You configure the endpoint yourself. The fields tell you exactly what to collect from the provider's app dashboard.
+
+Sample response for Slack:
+
+```json
+{
+  "toolkit_slug": "slack",
+  "setup_fields": {
+    "webhook_signing_secret": {
+      "display_name": "Signing Secret",
+      "description": "Webhook request signing secret from your Slack app dashboard",
+      "is_required": true,
+      "is_secret": true
+    },
+    "app_token": {
+      "display_name": "App-Level Token",
+      "description": "Slack xapp- token with authorizations:read scope for event authorization",
+      "is_required": true,
+      "is_secret": true
+    }
+  }
+}
+```
+
+### Step 2: Create the endpoint
+
+```bash
+curl -X POST "https://backend.composio.dev/api/v3.1/webhook_endpoints" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolkit_slug": "slack",
+    "client_id": "<YOUR_OAUTH_CLIENT_ID>"
+  }'
+```
+
+Sample response:
+
+```json
+{
+  "id": "we_abc123",
+  "toolkit_slug": "slack",
+  "client_id": "<YOUR_OAUTH_CLIENT_ID>",
+  "webhook_url": "https://backend.composio.dev/api/v3.1/webhook_ingress/slack/we_abc123/trigger_event",
+  "data": null,
+  "created_at": "2026-04-24T10:00:00.000Z"
+}
+```
+
+Hold on to two values from the response: `id` (used as `<ENDPOINT_ID>` below) and `webhook_url` (you'll paste this into the provider's app dashboard in step 4). The call is **idempotent per `(toolkit_slug, client_id)` within a project** — calling it again with the same pair returns the existing endpoint without rotating the URL or wiping the secret.
+
+<Callout type="warn">
+**A `webhook_endpoint` ties one OAuth app to exactly one project.** If you currently share an OAuth app across multiple Composio projects, either consolidate to one project or register separate OAuth apps per project before creating an endpoint — the provider dashboard accepts only one callback URL per OAuth app.
+</Callout>
+
+### Step 3: Store the credentials returned by the schema
+
+`PATCH` each field returned by the schema endpoint. For Slack, that's the signing secret and (when applicable) the app-level token.
+
+```bash
+curl -X PATCH "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "webhook_signing_secret": "<SIGNING_SECRET>"
+    }
+  }'
+```
+
+For Slack, the signing secret lives at **Slack app → Basic Information → App Credentials → Signing Secret**.
+
+<Callout type="warn">
+**Store the credentials before you switch the provider's callback URL in step 4.** If the provider posts to the URL without a secret on the endpoint, every request fails with `400`, and the provider may auto-disable the endpoint after a window of consecutive failures (Slack: ~36 hours).
+</Callout>
+
+For toolkits with additional fields — Slack's `app_token`, for instance, which is required for direct messages, private channels, and reactions — `PATCH` them in the same way:
+
+```bash
+curl -X PATCH "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "app_token": "xapp-..."
+    }
+  }'
+```
+
+Generate the Slack app-level token from **Slack app → Basic Information → App-Level Tokens** with scope `authorizations:read`.
+
+<Callout>
+The schema response is the source of truth for which fields each toolkit needs. Always read `setup_fields` (step 1) for the toolkit you're configuring rather than assuming the Slack shape.
+</Callout>
+
+### Step 4: Point the provider's app dashboard at the URL
+
+Paste the `webhook_url` from step 2 into the provider's app dashboard:
+
+- **Slack** → Event Subscriptions → Request URL
+- **Notion** → Webhook Endpoints (in the integration's settings)
+
+Composio responds to the provider's verification challenge automatically (Slack `url_verification`, Notion's verification token, and so on) — you don't write any handshake code on your side.
+
+### Step 5: Confirm the endpoint is verified
+
+```bash
+curl "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>"
+```
+
+A populated `verified_at` timestamp on the response means the provider has completed the handshake. You can now create trigger instances on this OAuth app.
+
+### Updating an endpoint
+
+To rotate the signing secret or update any single field, `PATCH` it (other fields are preserved):
+
+```bash
+curl -X PATCH "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{ "data": { "webhook_signing_secret": "<NEW_SECRET>" } }'
+```
+
+To **replace** `data` wholesale (any field you don't include is cleared), `POST` to the same URL:
+
+```bash
+curl -X POST "https://backend.composio.dev/api/v3.1/webhook_endpoints/<ENDPOINT_ID>" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{ "data": { "webhook_signing_secret": "<NEW_SECRET>", "app_token": "<NEW_APP_TOKEN>" } }'
+```
+
+The `webhook_url` itself is immutable for the lifetime of the endpoint — rotating the signing secret on the provider side is a `PATCH` on the existing endpoint, not a new one.
+
+To list every endpoint in the current project (useful when operating across many OAuth apps):
+
+```bash
+curl "https://backend.composio.dev/api/v3.1/webhook_endpoints" \
+  -H "x-api-key: <YOUR_COMPOSIO_API_KEY>"
+```
 
 ## Using the SDK
 
@@ -90,7 +248,7 @@ Trigger instances default to the `'latest'` toolkit version. If your code parses
 ## What to read next
 
 <Cards>
-  <Card icon={<RouteIcon />} title="Configuring webhook endpoints" href="/docs/setting-up-triggers/configuring-webhook-endpoints" description="Required for V2 toolkits (Slack today): register the provider's signing secret and ingress URL" />
   <Card icon={<Plug />} title="Subscribing to events" href="/docs/setting-up-triggers/subscribing-to-events" description="Receive trigger events via webhooks or SDK subscriptions" />
+  <Card icon={<ShieldCheck />} title="Verifying webhooks" href="/docs/webhook-verification" description="Validate webhook signatures so you know payloads came from Composio" />
   <Card icon={<Wrench />} title="Managing triggers" href="/docs/setting-up-triggers/managing-triggers" description="List, enable, disable, and delete trigger instances" />
 </Cards>

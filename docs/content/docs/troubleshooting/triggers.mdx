@@ -14,12 +14,14 @@ Check the error message — the connected account might not have sufficient perm
 - **Trigger status**: Verify the trigger is enabled, not disabled.
 - **Logs**: Check the [trigger logs](https://platform.composio.dev?next_page=/logs/triggers) in the dashboard for delivery attempts and errors.
 
-## V2 webhook endpoint issues (Slack and other V2 toolkits)
+## Webhook endpoint issues (your-own OAuth on Slack, Notion, etc.)
 
-- **`400` on every provider request.** The signing secret is missing or wrong on the [webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints). `PATCH` the endpoint with the secret before pointing the provider's dashboard at the URL — Slack auto-disables endpoints after ~36 hours of consecutive failures.
-- **`400` on trigger upsert for V2 slugs.** The OAuth app's `client_id` doesn't have a webhook endpoint in this project. Create one via `POST /api/v3.1/webhook_endpoints`.
+These only apply when you've configured the webhook endpoint yourself — see [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint). With Composio-managed OAuth apps, the endpoint is provisioned automatically and these issues don't apply.
+
+- **`400` on every provider request.** The signing secret on the [webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) is missing or wrong. `PATCH` the endpoint with the secret before pointing the provider's dashboard at the URL — Slack auto-disables endpoints after ~36 hours of consecutive failures.
+- **`400` on trigger upsert.** The OAuth app's `client_id` doesn't have a webhook endpoint in this project. Create one via `POST /api/v3.1/webhook_endpoints`.
 - **`verified_at` is null on the endpoint.** The provider hasn't completed the URL verification handshake yet. Re-save the URL in the provider's dashboard; for Slack, click **Save Changes** on Event Subscriptions.
-- **DMs / private channels / reactions don't fire on Slack.** The `app_token` is missing on the endpoint. `PATCH` the endpoint with an `xapp-` token that has the `authorizations:read` scope. See [Configuring webhook endpoints](/docs/setting-up-triggers/configuring-webhook-endpoints) for which Slack triggers require this.
+- **DMs / private channels / reactions don't fire on Slack.** The `app_token` is missing on the endpoint. `PATCH` the endpoint with an `xapp-` token that has the `authorizations:read` scope. See [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) for which Slack triggers require this.
 - **Replay-window rejections.** For providers that sign a timestamp (Slack), requests outside the allowed skew window are rejected. Make sure the system posting the events isn't replaying old payloads.
 
 ## Type errors with trigger payloads

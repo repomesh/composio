@@ -7,7 +7,7 @@ keywords: [webhooks, subscribe, events, webhook payload, V3]
 <Callout>
 Two webhook URLs sit on opposite sides of Composio — keep them distinct in your head.
 
-- **Provider → Composio (ingress).** Composio handles this for you. For most toolkits there's nothing to do; for V2 toolkits like Slack you [configure a webhook endpoint](/docs/setting-up-triggers/configuring-webhook-endpoints) once per OAuth app.
+- **Provider → Composio (ingress).** A webhook endpoint per OAuth app — Composio configures it for you in most cases. When you bring your own OAuth app on a toolkit like Slack or Notion, you [configure the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) once per OAuth app.
 - **Composio → your application (subscription).** This page covers this side: you tell Composio which URL to deliver events to, and Composio signs every request.
 </Callout>
 
