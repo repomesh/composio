@@ -2972,10 +2972,12 @@ describe('ToolRouter', () => {
         body: {
           experimental: {
             custom_tools: [expect.objectContaining({ slug: 'GREP' })],
-            custom_toolkits: undefined,
           },
         },
       });
+      expect(mockClient.post.mock.calls[0][1].body.experimental).not.toHaveProperty(
+        'custom_toolkits'
+      );
       expect(mockClient.toolRouter.session.retrieve).not.toHaveBeenCalled();
       expect(session.customTools()).toEqual([
         expect.objectContaining({

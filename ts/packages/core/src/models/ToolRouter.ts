@@ -265,8 +265,8 @@ export class ToolRouter<
         : undefined;
 
       inlineCustomToolsPayload = {
-        custom_tools: serializedTools,
-        custom_toolkits: serializedToolkits,
+        ...(serializedTools ? { custom_tools: serializedTools } : {}),
+        ...(serializedToolkits ? { custom_toolkits: serializedToolkits } : {}),
       };
     }
 
