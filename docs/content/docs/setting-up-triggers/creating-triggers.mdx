@@ -12,7 +12,7 @@ Create a trigger to start receiving events. A trigger watches for a specific eve
 - A [webhook subscription](/docs/setting-up-triggers/subscribing-to-events) on the project, so events have somewhere to land
 </Callout>
 
-You can create triggers using the [SDK](#using-the-sdk) or the Composio [dashboard](#using-the-dashboard). With Composio-managed OAuth, Composio handles all webhook endpoint setup for you. If you bring your own OAuth app and the trigger type's `requires_webhook_endpoint_setup` flag is `true`, the create call returns a `400` until you set up the endpoint — see [Configuring the webhook endpoint](#configuring-the-webhook-endpoint) below.
+You can create triggers using the [SDK](#using-the-sdk) or the Composio [dashboard](#using-the-dashboard). Some webhook triggers also need a webhook endpoint configured first — covered in [Configuring the webhook endpoint](#configuring-the-webhook-endpoint) below.
 
 ## Using the SDK
 
