@@ -149,6 +149,11 @@ export const Oauth2InactiveConnectionDataSchema = Oauth2InitiatingConnectionData
 // (`apps/apollo/src/lib/connected_accounts/schemes/connectionDataScheme.ts`):
 // shape matches the INITIATING schema with a status literal, plus an
 // optional `revoked_at` timestamp.
+//
+// Invariant (2026-05, Apollo PR #9550): REVOKED is emitted only for OAUTH2
+// today. S2S_OAUTH2 revocation is on Apollo's near-term roadmap — a matching
+// REVOKED arm exists in `S2SOauth2ConnectionDataSchema` below for when that
+// lands. Other auth schemes (api_key, basic, etc.) are not in scope.
 export const Oauth2RevokedConnectionDataSchema = Oauth2InitiatingConnectionDataSchema.extend({
   status: z.literal(ConnectionStatuses.REVOKED),
   revoked_at: z.string().optional(),
@@ -179,6 +184,11 @@ export type Oauth2ConnectionData = z.infer<typeof Oauth2ConnectionDataSchema>;
 export type CustomOauth2ConnectionData = z.infer<typeof CustomOauth2ConnectionDataSchema>;
 
 // S2S_OAUTH2
+// Invariant: REVOKED is OAuth2-only as of Apollo PR #9550 (2026-05). S2S_OAUTH2
+// revocation is on Apollo's near-term roadmap; the REVOKED arm below is added
+// preemptively so that when the server starts emitting it, the per-scheme
+// schema accepts it instead of `transformConnectedAccountResponse` silently
+// dropping the entire `state` payload (refresh tokens, etc.).
 const S2SOauth2BaseSchema = BaseSchemeRaw.extend({
   status: z.literal(ConnectionStatuses.INITIALIZING),
 }).catchall(z.unknown());
@@ -213,6 +223,10 @@ const S2SOauth2ConnectionDataSchema = z.discriminatedUnion('status', [
   S2SOauth2BaseSchema.extend({
     status: z.literal(ConnectionStatuses.EXPIRED),
     expired_at: z.string().optional(),
+  }).catchall(z.unknown()),
+  S2SOauth2BaseSchema.extend({
+    status: z.literal(ConnectionStatuses.REVOKED),
+    revoked_at: z.string().optional(),
   }).catchall(z.unknown()),
 ]);
 const CustomS2SOauth2ConnectionDataSchema = BaseSchemeRaw.extend({
