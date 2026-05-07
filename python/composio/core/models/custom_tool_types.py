@@ -10,6 +10,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 import typing_extensions as te
+from composio_client.types.tool_router import session_create_params
 from pydantic import BaseModel
 
 from composio_client.types.tool_router.session_execute_response import (
@@ -109,21 +110,27 @@ class CustomTool:
     preload: t.Optional[bool] = None
 
 
-class CustomToolWireDefinition(te.TypedDict, total=False):
-    slug: te.Required[str]
-    name: te.Required[str]
-    description: te.Required[str]
-    input_schema: te.Required[t.Dict[str, t.Any]]
-    extends_toolkit: str
-    output_schema: t.Dict[str, t.Any]
+class CustomToolWireDefinition(
+    session_create_params.ExperimentalCustomTool,
+    total=False,
+):
+    preload: bool
+
+
+class CustomToolkitToolWireDefinition(
+    session_create_params.ExperimentalCustomToolkitTool,
+    total=False,
+):
     preload: bool
 
 
 class CustomToolkitWireDefinition(te.TypedDict, total=False):
-    slug: te.Required[str]
-    name: te.Required[str]
+    # Stainless 1.37.0 lacks the input-only SDK preload hint on custom
+    # toolkits, so this mirrors the generated shape and adds that single field.
     description: te.Required[str]
-    tools: te.Required[t.List[CustomToolWireDefinition]]
+    name: te.Required[str]
+    slug: te.Required[str]
+    tools: te.Required[t.Iterable[CustomToolkitToolWireDefinition]]
     preload: bool
 
 
