@@ -36,6 +36,6 @@ For the Slack toolkit, set `as_user=True` to post as the authenticated user. For
 
 ## Why aren't my Slack triggers working?
 
-See [Triggers troubleshooting](https://docs.composio.dev/docs/troubleshooting/triggers) for the common failure modes — signing secret missing, `verified_at` null, missing app-level token, and replay-window rejections.
+See [Triggers troubleshooting](https://docs.composio.dev/docs/troubleshooting/triggers).
 
 ---
