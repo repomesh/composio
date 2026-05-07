@@ -12,7 +12,7 @@ Create a trigger to start receiving events. A trigger watches for a specific eve
 - A [webhook subscription](/docs/setting-up-triggers/subscribing-to-events) on the project, so events have somewhere to land
 </Callout>
 
-You can create triggers using the [SDK](#using-the-sdk) or the Composio [dashboard](#using-the-dashboard). With Composio-managed OAuth, Composio handles all webhook endpoint setup for you. If you bring your own OAuth app and the trigger type's `requires_webhook_endpoint` flag is true, the create call returns a `400` until you set up the endpoint — see [Configuring the webhook endpoint](#configuring-the-webhook-endpoint) below.
+You can create triggers using the [SDK](#using-the-sdk) or the Composio [dashboard](#using-the-dashboard). With Composio-managed OAuth, Composio handles all webhook endpoint setup for you. If you bring your own OAuth app and the trigger type's `requires_webhook_endpoint_setup` flag is `true`, the create call returns a `400` until you set up the endpoint — see [Configuring the webhook endpoint](#configuring-the-webhook-endpoint) below.
 
 ## Using the SDK
 
@@ -88,19 +88,23 @@ Trigger instances default to the `'latest'` toolkit version. If your code parses
 
 ## Configuring the webhook endpoint
 
-Skip this section unless all three are true: you bring your own OAuth app, the trigger type's `requires_webhook_endpoint` flag is true, and no matching endpoint exists yet (the create call returned a `400`). With Composio-managed OAuth, Composio configures the webhook endpoint for you transparently — none of these steps apply.
+Some webhook triggers require a webhook endpoint registered with the provider before they can fire. With Composio-managed OAuth, this is already done for you. You only run the steps below when you bring your own OAuth app and the trigger type's `requires_webhook_endpoint_setup` flag is `true`.
 
-A `webhook_endpoint` is a project-scoped resource that owns the ingress URL the provider posts to and the signing secret used to verify each request. Endpoints are keyed by `(toolkit_slug, project_id, client_id)`, so each OAuth app gets its own URL:
+Each OAuth app you bring gets its own ingress URL within a project:
 
 ```
 https://backend.composio.dev/api/v3.1/webhook_ingress/{toolkit_slug}/{we_xxx}/trigger_event
 ```
 
+A single OAuth app can serve at most one Composio project, since providers accept only one callback URL per OAuth app and each ingress URL routes to a single project. The upside: every project becomes its own webhook tenant with isolated ingress rate limits, its own signing secret and app-level token, clean fan-out (events only reach that project's triggers), and per-project metering.
+
+Provider events are verified at ingress against the endpoint's signing secret before any trigger fires — HMAC-SHA256 for Slack, Ed25519 or shared-token matching for others. For providers that sign a request timestamp, replay protection additionally rejects requests outside the allowed skew window. Unsigned or tampered requests get a `400` at ingress, so third parties cannot spoof events onto your triggers.
+
 <Callout type="warn">
-**A webhook endpoint ties one OAuth app to exactly one project.** If you currently share an OAuth app across multiple Composio projects, either consolidate to one project or register separate OAuth apps per project before creating an endpoint — the provider dashboard accepts only one callback URL per OAuth app.
+**Sharing one OAuth app across projects?** Consolidate to a single project or register separate OAuth apps per project before continuing.
 </Callout>
 
-The walkthrough below uses Slack as the example. Substitute the toolkit slug for any other toolkit on the same flow — the API surface is identical.
+The steps below use Slack. Other toolkits follow the same flow with different setup fields.
 
 ### Step 1: Discover what credentials the endpoint needs
 

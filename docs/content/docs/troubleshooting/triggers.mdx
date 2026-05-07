@@ -16,7 +16,7 @@ Check the error message — the connected account might not have sufficient perm
 
 ## Webhook endpoint issues
 
-These only apply to triggers whose `requires_webhook_endpoint` flag is true — see [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint). With Composio-managed OAuth apps the endpoint is provisioned automatically, so these don't apply.
+These only apply to triggers whose `requires_webhook_endpoint_setup` flag is `true` — see [Configuring the webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint). With Composio-managed OAuth apps the endpoint is provisioned automatically, so these don't apply.
 
 - **`400` on trigger upsert.** The OAuth app's `client_id` doesn't have a webhook endpoint in this project. Create one via `POST /api/v3.1/webhook_endpoints`.
 - **`400` on every provider request.** The signing secret on the [webhook endpoint](/docs/setting-up-triggers/creating-triggers#configuring-the-webhook-endpoint) is missing or wrong. `PATCH` the endpoint with the secret before pointing the provider's dashboard at the URL — Slack auto-disables endpoints after ~36 hours of consecutive failures.
