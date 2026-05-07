@@ -28,6 +28,15 @@ logger = logging.getLogger(__name__)
 # 2026-05-08 / 2026-07-03 retirement when the auth config is Composio-managed.
 _LEGACY_RETIRING_OAUTH_SCHEMES = frozenset({"OAUTH1", "OAUTH2", "DCR_OAUTH"})
 
+# Mirrors the TS contract (`ConnectionRequest.ts` `terminalErrorStates`):
+# FAILED / EXPIRED / REVOKED are credentials-gone states and should raise
+# immediately rather than poll until timeout. INACTIVE is intentionally
+# excluded — it means "user disabled, can be reactivated", and a connection
+# can briefly transit through it before settling on ACTIVE.
+_TERMINAL_CONNECTION_STATES: t.FrozenSet[str] = frozenset(
+    {"FAILED", "EXPIRED", "REVOKED"}
+)
+
 # One-time-per-process guard so long-running services don't spam the deprecation
 # warning on every initiate() call.
 _legacy_initiate_warning_emitted = False
@@ -74,20 +83,12 @@ class ConnectionRequest(Resource):
         """
         timeout = self.DEFAULT_WAIT_TIMEOUT if timeout is None else timeout
         deadline = time.time() + timeout
-        # Mirror the TS contract (`ConnectionRequest.ts` `terminalErrorStates`):
-        # FAILED / EXPIRED / REVOKED are terminal — credentials are gone and
-        # cannot transition back to ACTIVE without a fresh auth flow, so
-        # polling until timeout is wasted wall-clock time.
-        # INACTIVE is intentionally NOT terminal: it means "user disabled, can
-        # be reactivated", and a connection can briefly transit through it
-        # before settling on ACTIVE — failing fast there would regress callers.
-        terminal_states = ("FAILED", "EXPIRED", "REVOKED")
         while deadline > time.time():
             connection = self._client.connected_accounts.retrieve(nanoid=self.id)
             self.status = connection.status
             if self.status == "ACTIVE":
                 return connection
-            if self.status in terminal_states:
+            if self.status in _TERMINAL_CONNECTION_STATES:
                 raise exceptions.SDKError(
                     message=(
                         f"Connection {self.id} entered terminal state "
