@@ -59,9 +59,7 @@ const normalizeConnectedAccountStatus = (
     case 'REVOKED':
       return status;
     default:
-      // Apollo can introduce new statuses at any time. Use a sentinel
-      // (`'UNKNOWN'`) instead of coercing to `'INACTIVE'`, which would
-      // falsely tag the account as user-disabled in selection logic.
+      // Sentinel — `'INACTIVE'` would falsely tag the account as user-disabled.
       return 'UNKNOWN';
   }
 };
@@ -128,8 +126,8 @@ export const resolveToolRouterSessionConnections = (
       const connectedToolkits = new Set<string>();
       const explicitAccountsByToolkit = new Map<string, RawConnectedAccount>();
 
-      // Second pass over the raw items — needs untouched `auth_config` and
-      // `is_disabled` metadata that the normalized projection drops.
+      // Second pass over raw items — needs `auth_config` / `is_disabled`
+      // dropped by the normalized projection.
       for (const item of items) {
         const toolkit = item.toolkit?.slug?.toLowerCase().trim();
         if (!toolkit || item.is_disabled) continue;
@@ -174,10 +172,7 @@ export const resolveToolRouterSessionConnections = (
     }),
     Effect.tap(({ unknownStatuses }) =>
       unknownStatuses.size > 0
-        ? // Service-layer code: peers use `Effect.logDebug` for diagnostic
-          // signal. The user-facing `ui.log.warn` channel runs from command
-          // layers (e.g. `connected-accounts.list.cmd.ts`).
-          Effect.logDebug(
+        ? Effect.logDebug(
             `[ToolRouterSession] received unrecognized connected_account.status ` +
               `value(s): ${[...unknownStatuses].join(', ')}. Treating as 'UNKNOWN' ` +
               `(not selectable). Run "composio upgrade" to pick up the latest schema.`

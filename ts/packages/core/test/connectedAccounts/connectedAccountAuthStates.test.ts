@@ -51,10 +51,6 @@ describe('connectedAccountAuthStates — REVOKED arms', () => {
     });
 
     it('accepts REVOKED for S2S_OAUTH2 (preempts the queued Apollo rollout)', () => {
-      // Today the server only emits REVOKED for OAUTH2, but S2S_OAUTH2 is on
-      // Apollo's near-term roadmap. Without the matching arm, the entire
-      // `state` would silently fail discriminated-union parsing in the
-      // top-level transformer.
       const parsed = ConnectionDataSchema.parse({
         authScheme: AuthSchemeTypes.S2S_OAUTH2,
         val: {
@@ -129,10 +125,8 @@ describe('connectedAccountAuthStates — REVOKED arms', () => {
   });
 
   describe('ConnectionStatuses enum closure', () => {
+    // Forces deliberate updates when Apollo adds a status.
     it('enumerates exactly the values this PR contracts for', () => {
-      // Closure test — if Apollo adds a new status, the SDK should mirror it
-      // here on purpose, not by accident. Compare the enum object's value set
-      // to the set this PR ships.
       expect(new Set(Object.values(ConnectionStatuses))).toEqual(
         new Set(['INITIALIZING', 'INITIATED', 'ACTIVE', 'FAILED', 'EXPIRED', 'INACTIVE', 'REVOKED'])
       );

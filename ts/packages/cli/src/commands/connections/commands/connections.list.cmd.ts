@@ -73,9 +73,7 @@ export const connectionsCmd$List = Command.make('list', { toolkit }, ({ toolkit 
         limit: 1000,
       })
     );
-    // Same forward-compat guard as `connected-accounts.list.cmd.ts`: the
-    // closed `Schema.Literal(...)` for `status` would brick this command
-    // for the entire user base when Apollo adds a new enum value.
+    // Same forward-compat guard as `connected-accounts.list.cmd.ts`.
     const result = yield* Schema.decodeUnknown(ConnectedAccountListResponse)(rawResult).pipe(
       Effect.catchTag('ParseError', error =>
         Effect.gen(function* () {
@@ -85,9 +83,6 @@ export const connectionsCmd$List = Command.make('list', { toolkit }, ({ toolkit 
               `the latest schema. Continuing with raw response.\n\n` +
               `Decode error: ${error.message}`
           );
-          // Cast lies about the schema brand, but `formatConnectionsJson`
-          // only reads `status`, `alias`, `word_id`, `toolkit.slug` — the
-          // unvalidated raw payload is safe to render as-is.
           return rawResult as ConnectedAccountListResponse;
         })
       )

@@ -1,13 +1,9 @@
 import type { ConnectedAccountItem } from 'src/models/connected-accounts';
 
-/**
- * `ConnectedAccountItem` widened to allow an `'UNKNOWN'` status sentinel
- * used by the CLI when the server returns a status the schema does not
- * recognize (e.g. a newly-added Apollo enum value). Selection helpers only
- * pick `'ACTIVE'` accounts, so any other label — including `'UNKNOWN'` —
- * is filtered out, but storing the honest sentinel avoids falsely tagging
- * the row as `'INACTIVE'` (which means "user-disabled" specifically).
- */
+// `ConnectedAccountItem` widened with an `'UNKNOWN'` sentinel for statuses
+// the closed schema doesn't yet know about. Selection only picks `'ACTIVE'`,
+// so unknown rows still drop out — but without falsely labeling them
+// `'INACTIVE'` (= user-disabled).
 export type SelectableConnectedAccount = Omit<ConnectedAccountItem, 'status'> & {
   readonly status: ConnectedAccountItem['status'] | 'UNKNOWN';
 };

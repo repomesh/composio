@@ -88,13 +88,9 @@ export const connectedAccountsCmd$List = Command.make(
           })
         )
       );
-      // The Composio server enum for connection statuses evolves on Apollo's
-      // cadence (REVOKED was added in PR #9550; S2S_OAUTH2 revocation is queued
-      // next). A closed `Schema.Literal(...)` in `ConnectedAccountItem` would
-      // reject any future status and brick `composio dev connected-accounts list`
-      // for every user — even those filtering on `--status ACTIVE`. Catch the
-      // ParseError, warn, and degrade to the raw response so the table still
-      // renders.
+      // Forward-compat: a future Apollo status would otherwise brick the
+      // command via the closed `Schema.Literal(...)`. Degrade to raw on
+      // ParseError; formatters only read non-credential-bearing fields.
       const result = yield* Schema.decodeUnknown(ConnectedAccountListResponse)(rawResult).pipe(
         Effect.catchTag('ParseError', error =>
           Effect.gen(function* () {
@@ -104,11 +100,6 @@ export const connectedAccountsCmd$List = Command.make(
                 `the latest schema. Continuing with raw response.\n\n` +
                 `Decode error: ${error.message}`
             );
-            // Cast lies about the schema brand, but the downstream formatters
-            // (`formatConnectedAccountsTable`, `formatConnectedAccountsJson`)
-            // only read whitelisted fields — credential-bearing `state` /
-            // `data` are never indexed, so the unvalidated raw payload is
-            // safe to render as-is.
             return rawResult as ConnectedAccountListResponse;
           })
         )

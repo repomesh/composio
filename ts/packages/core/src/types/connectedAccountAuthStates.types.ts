@@ -145,10 +145,8 @@ export const Oauth2InactiveConnectionDataSchema = Oauth2InitiatingConnectionData
     .describe('for slack user scopes'),
 }).catchall(z.unknown());
 
-// Mirrors `Oauth2RevokedConnectionDataSchema` on the Apollo side
-// (`apps/apollo/src/lib/connected_accounts/schemes/connectionDataScheme.ts`).
-// See the invariant comment above `S2SOauth2ConnectionDataSchema` below for
-// the OAuth2-only / S2S_OAUTH2-next scope.
+// Mirrors Apollo's `Oauth2RevokedConnectionDataSchema`. Scope: see
+// `S2SOauth2ConnectionDataSchema` below.
 export const Oauth2RevokedConnectionDataSchema = Oauth2InitiatingConnectionDataSchema.extend({
   status: z.literal(ConnectionStatuses.REVOKED),
   revoked_at: z.string().optional(),
@@ -179,11 +177,10 @@ export type Oauth2ConnectionData = z.infer<typeof Oauth2ConnectionDataSchema>;
 export type CustomOauth2ConnectionData = z.infer<typeof CustomOauth2ConnectionDataSchema>;
 
 // S2S_OAUTH2
-// Invariant: REVOKED is OAuth2-only as of Apollo PR #9550 (2026-05). S2S_OAUTH2
-// revocation is on Apollo's near-term roadmap; the REVOKED arm below is added
-// preemptively so that when the server starts emitting it, the per-scheme
-// schema accepts it instead of `transformConnectedAccountResponse` silently
-// dropping the entire `state` payload (refresh tokens, etc.).
+// Invariant (Apollo PR #9550, 2026-05): REVOKED is OAUTH2-only today;
+// S2S_OAUTH2 is queued. The REVOKED arm below is preemptive — without it
+// `transformConnectedAccountResponse` would silently drop `state` once the
+// server starts emitting it.
 const S2SOauth2BaseSchema = BaseSchemeRaw.extend({
   status: z.literal(ConnectionStatuses.INITIALIZING),
 }).catchall(z.unknown());

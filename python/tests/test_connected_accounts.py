@@ -179,9 +179,6 @@ class TestConnectionRequest:
     def test_wait_for_connection_fails_fast_on_terminal_status(
         self, monkeypatch, terminal_status
     ):
-        # Mirrors the TS contract (`ConnectionRequest.ts` `terminalErrorStates`):
-        # FAILED / EXPIRED / REVOKED are credentials-gone states and should
-        # raise immediately rather than poll until timeout.
         mock_client = Mock()
         terminal = Mock()
         terminal.status = terminal_status
@@ -194,10 +191,7 @@ class TestConnectionRequest:
             client=mock_client,
         )
 
-        # Defensively patch `time.time` (matches sibling tests at lines 137,
-        # 170): a stuck CI runner could otherwise reach the deadline before
-        # the first retrieve call lands, masking the SDKError assertion as a
-        # ComposioSDKTimeoutError.
+        # Patch `time.time` defensively — matches sibling tests.
         current_time = {"value": 0.0}
 
         def fake_time():
@@ -217,9 +211,6 @@ class TestConnectionRequest:
         assert mock_client.connected_accounts.retrieve.call_count == 1
 
     def test_wait_for_connection_does_not_treat_inactive_as_terminal(self, monkeypatch):
-        # INACTIVE means "user disabled, can be reactivated" — a connection can
-        # briefly transit through it before settling on ACTIVE. Failing fast
-        # there would regress callers that previously recovered.
         mock_client = Mock()
         inactive = Mock()
         inactive.status = "INACTIVE"

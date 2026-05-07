@@ -28,11 +28,8 @@ logger = logging.getLogger(__name__)
 # 2026-05-08 / 2026-07-03 retirement when the auth config is Composio-managed.
 _LEGACY_RETIRING_OAUTH_SCHEMES = frozenset({"OAUTH1", "OAUTH2", "DCR_OAUTH"})
 
-# Mirrors the TS contract (`ConnectionRequest.ts` `terminalErrorStates`):
-# FAILED / EXPIRED / REVOKED are credentials-gone states and should raise
-# immediately rather than poll until timeout. INACTIVE is intentionally
-# excluded — it means "user disabled, can be reactivated", and a connection
-# can briefly transit through it before settling on ACTIVE.
+# Mirrors TS `ConnectionRequest.ts:terminalErrorStates`. INACTIVE is excluded
+# on purpose — it can recover to ACTIVE.
 _TERMINAL_CONNECTION_STATES: t.FrozenSet[str] = frozenset(
     {"FAILED", "EXPIRED", "REVOKED"}
 )

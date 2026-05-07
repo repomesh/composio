@@ -232,18 +232,12 @@ describe('CLI: composio dev connected-accounts list', () => {
     }
   );
 
-  // Forward-compat: simulate the server returning a status the CLI does not
-  // know about (e.g. a freshly-added Apollo enum value). The decode now uses
-  // `catchTag('ParseError')` to warn and degrade rather than crashing the
-  // entire command — even users filtering on `--status ACTIVE` would
-  // otherwise be blocked.
+  // Forward-compat: server returns a status the CLI doesn't know about.
   const unknownStatusAccounts = [
     {
       ...testConnectedAccounts[0],
       id: 'con_future_status',
-      // Cast to bypass the closed `ConnectedAccountItem['status']` literal —
-      // the whole point of this test is what happens when the server hands
-      // us a value the schema rejects.
+      // Cast bypasses the closed status literal — that's the point.
       status: 'FUTURE_NOT_YET_KNOWN' as ConnectedAccountItem['status'],
     },
   ];
