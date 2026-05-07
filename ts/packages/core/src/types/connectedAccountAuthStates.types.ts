@@ -146,14 +146,9 @@ export const Oauth2InactiveConnectionDataSchema = Oauth2InitiatingConnectionData
 }).catchall(z.unknown());
 
 // Mirrors `Oauth2RevokedConnectionDataSchema` on the Apollo side
-// (`apps/apollo/src/lib/connected_accounts/schemes/connectionDataScheme.ts`):
-// shape matches the INITIATING schema with a status literal, plus an
-// optional `revoked_at` timestamp.
-//
-// Invariant (2026-05, Apollo PR #9550): REVOKED is emitted only for OAUTH2
-// today. S2S_OAUTH2 revocation is on Apollo's near-term roadmap — a matching
-// REVOKED arm exists in `S2SOauth2ConnectionDataSchema` below for when that
-// lands. Other auth schemes (api_key, basic, etc.) are not in scope.
+// (`apps/apollo/src/lib/connected_accounts/schemes/connectionDataScheme.ts`).
+// See the invariant comment above `S2SOauth2ConnectionDataSchema` below for
+// the OAuth2-only / S2S_OAUTH2-next scope.
 export const Oauth2RevokedConnectionDataSchema = Oauth2InitiatingConnectionDataSchema.extend({
   status: z.literal(ConnectionStatuses.REVOKED),
   revoked_at: z.string().optional(),
