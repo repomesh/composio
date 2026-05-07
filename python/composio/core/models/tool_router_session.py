@@ -12,7 +12,9 @@ import typing as t
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from composio_client import omit
+from composio_client import Omit, omit
+from composio_client._types import SequenceNotStr
+from composio_client.types.tool_router import session_patch_params
 from composio.client.types import Tool
 from composio_client.types.tool_list_response import (
     ItemDeprecated,
@@ -798,3 +800,49 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
             body=body,
             parameters=parameters,
         )
+
+    def update(
+        self,
+        *,
+        toolkits: t.Union[session_patch_params.Toolkits, "Omit"] = omit,
+        tools: t.Union[t.Dict[str, session_patch_params.Tools], "Omit"] = omit,
+        tags: t.Union[session_patch_params.Tags, "Omit"] = omit,
+        auth_configs: t.Union[t.Dict[str, str], "Omit"] = omit,
+        connected_accounts: t.Union[
+            t.Optional[t.Dict[str, SequenceNotStr[str]]], "Omit"
+        ] = omit,
+        manage_connections: t.Union[
+            t.Optional[session_patch_params.ManageConnections], "Omit"
+        ] = omit,
+        workbench: t.Union[t.Optional[session_patch_params.Workbench], "Omit"] = omit,
+        multi_account: t.Union[
+            t.Optional[session_patch_params.MultiAccount], "Omit"
+        ] = omit,
+        preload: t.Union[session_patch_params.Preload, "Omit"] = omit,
+    ) -> None:
+        """Partially update the session configuration.
+
+        Only the fields provided will be changed; omitted fields are preserved.
+        Mutates this session's ``preload`` in-place.
+
+        Pass ``None`` for ``manage_connections``, ``workbench``, or
+        ``multi_account`` to clear the stored value.
+
+        All parameters use the same types as the Stainless-generated
+        ``client.tool_router.session.patch()`` method.
+        """
+        from composio.core.models.tool_router import _session_preload_config
+
+        response = self._client.tool_router.session.patch(
+            session_id=self.session_id,
+            toolkits=toolkits,
+            tools=tools,
+            tags=tags,
+            auth_configs=auth_configs,
+            connected_accounts=connected_accounts,
+            manage_connections=manage_connections,
+            workbench=workbench,
+            multi_account=multi_account,
+            preload=preload,
+        )
+        self.preload = _session_preload_config(response.config.preload)
