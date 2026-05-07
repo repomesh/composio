@@ -998,15 +998,14 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
         custom_toolkits: t.Optional[t.List[ExperimentalToolkit]] = None,
     ) -> ToolRouterSession[TTool, TToolCollection]:
         """
-        Retrieve and use an existing tool router session, optionally attaching custom tools.
+        Use an existing tool router session.
 
-        The SDK always attaches to the session endpoint. When ``custom_tools``
-        or ``custom_toolkits`` are provided, they are included so they are
-        available for search and execution.
+        Provide ``custom_tools`` or ``custom_toolkits`` to bind SDK-local tools
+        to the session for search and execution.
 
-        :param session_id: The session ID to retrieve
-        :param custom_tools: Optional custom tools to attach to the session.
-        :param custom_toolkits: Optional custom toolkits to attach to the session.
+        :param session_id: The session ID to use.
+        :param custom_tools: Optional custom tools to bind to the session.
+        :param custom_toolkits: Optional custom toolkits to bind to the session.
         :return: Tool router session object
 
         Example:
@@ -1015,10 +1014,10 @@ class ToolRouter(Resource, t.Generic[TTool, TToolCollection]):
 
             composio = Composio()
 
-            # Simple rehydration
+            # Use an existing session
             session = composio.use('session_123')
 
-            # Rehydration with custom tools
+            # Use an existing session with custom tools
             session = composio.use(
                 'session_123',
                 custom_tools=[my_tool],
