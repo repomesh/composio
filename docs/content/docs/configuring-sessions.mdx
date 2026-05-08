@@ -116,16 +116,21 @@ Requires `@composio/core` ≥ `0.9.0` (TypeScript) or `composio` ≥ `0.13.0`
 ```python
 session = composio.create(
     user_id="user_123",
-    toolkits=["granola_mcp"],
+    toolkits=["gmail"],
     preload={
         "tools": [
-            "GRANOLA_MCP_LIST_MEETINGS",
-            "GRANOLA_MCP_QUERY_GRANOLA_MEETINGS",
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_CREATE_EMAIL_DRAFT",
         ],
     },
 )
 
 tools = session.tools()
+print([tool.name for tool in tools])
+# GMAIL_FETCH_EMAILS
+# GMAIL_CREATE_EMAIL_DRAFT
+# COMPOSIO_SEARCH_TOOLS
+# ... other default meta tools
 ```
 </Tab>
 <Tab value="TypeScript">
@@ -134,27 +139,29 @@ import { Composio } from '@composio/core';
 const composio = new Composio({ apiKey: 'your_api_key' });
 // ---cut---
 const session = await composio.create("user_123", {
-  toolkits: ["granola_mcp"],
+  toolkits: ["gmail"],
   preload: {
-    tools: [
-      "GRANOLA_MCP_LIST_MEETINGS",
-      "GRANOLA_MCP_QUERY_GRANOLA_MEETINGS",
-    ],
+    tools: ["GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"],
   },
 });
 
 const tools = await session.tools();
+console.log(tools.map((tool) => tool.name));
+// GMAIL_FETCH_EMAILS
+// GMAIL_CREATE_EMAIL_DRAFT
+// COMPOSIO_SEARCH_TOOLS
+// ... other default meta tools
 ```
 </Tab>
 </Tabs>
 
-For SDK custom tools, set `preload: true` on the custom tool or custom toolkit
-instead of listing `LOCAL_*` slugs in `preload.tools`. See
+For SDK custom tools, set `preload: true` on the custom tool or custom toolkit. See
 [Preloading custom tools](/docs/toolkits/custom-tools-and-toolkits#preloading-custom-tools).
 
 Use the `preload.tools = "all"` shortcut (`preload={"tools": "all"}` in Python,
-`preload: { tools: "all" }` in TypeScript) to preload every Composio-managed
-tool allowed by the session filters.
+`preload: { tools: "all" }` in TypeScript) to preload every tool allowed by the
+session filters. The `all` shorthand works for both Composio tools and SDK
+custom tools.
 
 ### Direct tools preset
 
@@ -174,11 +181,22 @@ from composio import SESSION_PRESET_DIRECT_TOOLS
 
 session = composio.create(
     user_id="user_123",
-    toolkits=["granola_mcp"],
+    toolkits=["gmail"],
+    tools={
+        "gmail": {
+            "enable": [
+                "GMAIL_FETCH_EMAILS",
+                "GMAIL_CREATE_EMAIL_DRAFT",
+            ],
+        },
+    },
     session_preset=SESSION_PRESET_DIRECT_TOOLS,
 )
 
 tools = session.tools()
+print([tool.name for tool in tools])
+# GMAIL_FETCH_EMAILS
+# GMAIL_CREATE_EMAIL_DRAFT
 ```
 </Tab>
 <Tab value="TypeScript">
@@ -187,11 +205,19 @@ import { Composio, SessionPreset } from '@composio/core';
 const composio = new Composio({ apiKey: 'your_api_key' });
 // ---cut---
 const session = await composio.create("user_123", {
-  toolkits: ["granola_mcp"],
+  toolkits: ["gmail"],
+  tools: {
+    gmail: {
+      enable: ["GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"],
+    },
+  },
   sessionPreset: SessionPreset.DIRECT_TOOLS,
 });
 
 const tools = await session.tools();
+console.log(tools.map((tool) => tool.name));
+// GMAIL_FETCH_EMAILS
+// GMAIL_CREATE_EMAIL_DRAFT
 ```
 </Tab>
 </Tabs>
@@ -199,9 +225,9 @@ const tools = await session.tools();
 **Enable selected meta tools**
 
 When using the direct tools preset, you can selectively re-enable supported meta
-tool groups that your agent still needs. For example, this session loads Granola
-tools upfront while keeping connection management and workbench support
-available:
+tool groups that your agent still needs. For example, this session loads Gmail
+reply-drafting tools upfront while keeping connection management and workbench
+support available:
 
 <Tabs groupId="language" items={['Python', 'TypeScript']} persist>
 <Tab value="Python">
@@ -210,7 +236,15 @@ from composio import SESSION_PRESET_DIRECT_TOOLS
 
 session = composio.create(
     user_id="user_123",
-    toolkits=["granola_mcp"],
+    toolkits=["gmail"],
+    tools={
+        "gmail": {
+            "enable": [
+                "GMAIL_FETCH_EMAILS",
+                "GMAIL_CREATE_EMAIL_DRAFT",
+            ],
+        },
+    },
     session_preset=SESSION_PRESET_DIRECT_TOOLS,
     manage_connections={
         "enable": True,
@@ -221,6 +255,12 @@ session = composio.create(
 )
 
 tools = session.tools()
+print([tool.name for tool in tools])
+# GMAIL_FETCH_EMAILS
+# GMAIL_CREATE_EMAIL_DRAFT
+# COMPOSIO_MANAGE_CONNECTIONS
+# COMPOSIO_REMOTE_WORKBENCH
+# COMPOSIO_REMOTE_BASH_TOOL
 ```
 </Tab>
 <Tab value="TypeScript">
@@ -229,7 +269,12 @@ import { Composio, SessionPreset } from '@composio/core';
 const composio = new Composio({ apiKey: 'your_api_key' });
 // ---cut---
 const session = await composio.create("user_123", {
-  toolkits: ["granola_mcp"],
+  toolkits: ["gmail"],
+  tools: {
+    gmail: {
+      enable: ["GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"],
+    },
+  },
   sessionPreset: SessionPreset.DIRECT_TOOLS,
   manageConnections: {
     enable: true,
@@ -240,6 +285,12 @@ const session = await composio.create("user_123", {
 });
 
 const tools = await session.tools();
+console.log(tools.map((tool) => tool.name));
+// GMAIL_FETCH_EMAILS
+// GMAIL_CREATE_EMAIL_DRAFT
+// COMPOSIO_MANAGE_CONNECTIONS
+// COMPOSIO_REMOTE_WORKBENCH
+// COMPOSIO_REMOTE_BASH_TOOL
 ```
 </Tab>
 </Tabs>

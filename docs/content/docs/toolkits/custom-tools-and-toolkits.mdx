@@ -489,61 +489,39 @@ tools = session.tools()
 ## Preloading custom tools
 
 Custom tools are searchable by default. Set `preload: true` / `preload=True` on a
-custom tool when it should be returned directly from `session.tools()`. For a
-custom toolkit, set preload on the toolkit to expose all of its tools, then use a
-tool-level `preload: false` / `preload=False` to opt out a specific tool.
+custom tool when it should be returned directly from `session.tools()`. Toolkit
+preload applies to all tools in that toolkit; set `preload: false` /
+`preload=False` on one tool to opt it out.
 
 <Tabs groupId="language" items={['TypeScript', 'Python']} persist>
 <Tab value="TypeScript">
 ```typescript
-import { Composio, experimental_createTool, experimental_createToolkit } from "@composio/core";
+import { Composio, experimental_createTool } from "@composio/core";
 import { z } from "zod/v3";
 
 const composio = new Composio({ apiKey: "your_api_key" });
 
-const lookupAccount = experimental_createTool("LOOKUP_ACCOUNT", {
-  name: "Lookup account",
-  description: "Look up an account by email",
+const replyGuide = experimental_createTool("GET_REPLY_STYLE_GUIDE", {
+  name: "Get reply style guide",
+  description: "Return the team's email reply style guide",
   preload: true,
   inputParams: z.object({
-    email: z.string().describe("Customer email address"),
+    topic: z.string().describe("Email topic"),
   }),
-  execute: async ({ email }) => ({ email, status: "active" }),
-});
-
-const supportTools = experimental_createToolkit("SUPPORT_TOOLS", {
-  name: "Support tools",
-  description: "Internal support workflows",
-  preload: true,
-  tools: [
-    experimental_createTool("GET_TICKET", {
-      name: "Get ticket",
-      description: "Fetch an internal support ticket",
-      inputParams: z.object({
-        ticketId: z.string().describe("Ticket ID"),
-      }),
-      execute: async ({ ticketId }) => ({ ticketId, priority: "high" }),
-    }),
-    experimental_createTool("ARCHIVE_TICKET", {
-      name: "Archive ticket",
-      description: "Archive an internal support ticket",
-      preload: false,
-      inputParams: z.object({
-        ticketId: z.string().describe("Ticket ID"),
-      }),
-      execute: async ({ ticketId }) => ({ ticketId, archived: true }),
-    }),
-  ],
+  execute: async ({ topic }) => ({ topic, tone: "concise and helpful" }),
 });
 
 const session = await composio.create("user_1", {
   experimental: {
-    customTools: [lookupAccount],
-    customToolkits: [supportTools],
+    customTools: [replyGuide],
   },
 });
 
 const tools = await session.tools();
+console.log(tools.map((tool) => tool.name));
+// LOCAL_GET_REPLY_STYLE_GUIDE
+// COMPOSIO_SEARCH_TOOLS
+// ... other default meta tools
 ```
 </Tab>
 <Tab value="Python">
@@ -555,49 +533,28 @@ from composio import Composio
 composio = Composio(api_key="your_api_key")
 
 
-class EmailInput(BaseModel):
-    email: str = Field(description="Customer email address")
+class ReplyGuideInput(BaseModel):
+    topic: str = Field(description="Email topic")
 
 
 @composio.experimental.tool(preload=True)
-def lookup_account(input: EmailInput, ctx):
-    """Look up an account by email."""
-    return {"email": input.email, "status": "active"}
-
-
-support_tools = composio.experimental.Toolkit(
-    slug="SUPPORT_TOOLS",
-    name="Support tools",
-    description="Internal support workflows",
-    preload=True,
-)
-
-
-class TicketInput(BaseModel):
-    ticket_id: str = Field(description="Ticket ID")
-
-
-@support_tools.tool()
-def get_ticket(input: TicketInput, ctx):
-    """Fetch an internal support ticket."""
-    return {"ticket_id": input.ticket_id, "priority": "high"}
-
-
-@support_tools.tool(preload=False)
-def archive_ticket(input: TicketInput, ctx):
-    """Archive an internal support ticket."""
-    return {"ticket_id": input.ticket_id, "archived": True}
+def get_reply_style_guide(input: ReplyGuideInput, ctx):
+    """Return the team's email reply style guide."""
+    return {"topic": input.topic, "tone": "concise and helpful"}
 
 
 session = composio.create(
     user_id="user_1",
     experimental={
-        "custom_tools": [lookup_account],
-        "custom_toolkits": [support_tools],
+        "custom_tools": [get_reply_style_guide],
     },
 )
 
 tools = session.tools()
+print([tool.name for tool in tools])
+# LOCAL_GET_REPLY_STYLE_GUIDE
+# COMPOSIO_SEARCH_TOOLS
+# ... other default meta tools
 ```
 </Tab>
 </Tabs>
