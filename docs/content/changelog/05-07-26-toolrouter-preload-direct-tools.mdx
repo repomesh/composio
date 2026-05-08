@@ -22,8 +22,12 @@ generally fewer than 20 tools, to avoid context bloat.
 <Tab value="Python">
 ```python
 from composio import Composio
+from composio_openai_agents import OpenAIAgentsProvider
 
-composio = Composio(api_key="your_api_key")
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
 
 session = composio.create(
     user_id="user_123",
@@ -44,8 +48,12 @@ print([tool.name for tool in tools])
 <Tab value="TypeScript">
 ```typescript
 import { Composio } from '@composio/core';
+import { OpenAIAgentsProvider } from '@composio/openai-agents';
 
-const composio = new Composio({ apiKey: 'your_api_key' });
+const composio = new Composio({
+  apiKey: 'your_api_key',
+  provider: new OpenAIAgentsProvider(),
+});
 
 const session = await composio.create('user_123', {
   toolkits: ['gmail'],
@@ -74,8 +82,12 @@ disable session meta tools by default.
 <Tab value="Python">
 ```python
 from composio import Composio, SESSION_PRESET_DIRECT_TOOLS
+from composio_openai_agents import OpenAIAgentsProvider
 
-composio = Composio(api_key="your_api_key")
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
 
 session = composio.create(
     user_id="user_123",
@@ -97,8 +109,12 @@ print([tool.name for tool in tools])
 <Tab value="TypeScript">
 ```typescript
 import { Composio, SessionPreset } from '@composio/core';
+import { OpenAIAgentsProvider } from '@composio/openai-agents';
 
-const composio = new Composio({ apiKey: 'your_api_key' });
+const composio = new Composio({
+  apiKey: 'your_api_key',
+  provider: new OpenAIAgentsProvider(),
+});
 
 const session = await composio.create('user_123', {
   toolkits: ['gmail'],
@@ -125,8 +141,12 @@ can be enabled alongside the preset:
 <Tab value="Python">
 ```python
 from composio import Composio, SESSION_PRESET_DIRECT_TOOLS
+from composio_openai_agents import OpenAIAgentsProvider
 
-composio = Composio(api_key="your_api_key")
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
 
 session = composio.create(
     user_id="user_123",
@@ -153,8 +173,12 @@ print([tool.name for tool in tools])
 <Tab value="TypeScript">
 ```typescript
 import { Composio, SessionPreset } from '@composio/core';
+import { OpenAIAgentsProvider } from '@composio/openai-agents';
 
-const composio = new Composio({ apiKey: 'your_api_key' });
+const composio = new Composio({
+  apiKey: 'your_api_key',
+  provider: new OpenAIAgentsProvider(),
+});
 
 const session = await composio.create('user_123', {
   toolkits: ['gmail'],

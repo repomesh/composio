@@ -114,6 +114,14 @@ Requires `@composio/core` ≥ `0.9.0` (TypeScript) or `composio` ≥ `0.13.0`
 <Tabs groupId="language" items={['Python', 'TypeScript']} persist>
 <Tab value="Python">
 ```python
+from composio import Composio
+from composio_openai_agents import OpenAIAgentsProvider
+
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
+
 session = composio.create(
     user_id="user_123",
     toolkits=["gmail"],
@@ -136,7 +144,12 @@ print([tool.name for tool in tools])
 <Tab value="TypeScript">
 ```typescript
 import { Composio } from '@composio/core';
-const composio = new Composio({ apiKey: 'your_api_key' });
+import { OpenAIAgentsProvider } from '@composio/openai-agents';
+
+const composio = new Composio({
+  apiKey: 'your_api_key',
+  provider: new OpenAIAgentsProvider(),
+});
 // ---cut---
 const session = await composio.create("user_123", {
   toolkits: ["gmail"],
@@ -177,7 +190,13 @@ context bloat.
 <Tabs groupId="language" items={['Python', 'TypeScript']} persist>
 <Tab value="Python">
 ```python
-from composio import SESSION_PRESET_DIRECT_TOOLS
+from composio import Composio, SESSION_PRESET_DIRECT_TOOLS
+from composio_openai_agents import OpenAIAgentsProvider
+
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
 
 session = composio.create(
     user_id="user_123",
@@ -202,7 +221,12 @@ print([tool.name for tool in tools])
 <Tab value="TypeScript">
 ```typescript
 import { Composio, SessionPreset } from '@composio/core';
-const composio = new Composio({ apiKey: 'your_api_key' });
+import { OpenAIAgentsProvider } from '@composio/openai-agents';
+
+const composio = new Composio({
+  apiKey: 'your_api_key',
+  provider: new OpenAIAgentsProvider(),
+});
 // ---cut---
 const session = await composio.create("user_123", {
   toolkits: ["gmail"],
@@ -232,7 +256,13 @@ support available:
 <Tabs groupId="language" items={['Python', 'TypeScript']} persist>
 <Tab value="Python">
 ```python
-from composio import SESSION_PRESET_DIRECT_TOOLS
+from composio import Composio, SESSION_PRESET_DIRECT_TOOLS
+from composio_openai_agents import OpenAIAgentsProvider
+
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
 
 session = composio.create(
     user_id="user_123",
@@ -266,7 +296,12 @@ print([tool.name for tool in tools])
 <Tab value="TypeScript">
 ```typescript
 import { Composio, SessionPreset } from '@composio/core';
-const composio = new Composio({ apiKey: 'your_api_key' });
+import { OpenAIAgentsProvider } from '@composio/openai-agents';
+
+const composio = new Composio({
+  apiKey: 'your_api_key',
+  provider: new OpenAIAgentsProvider(),
+});
 // ---cut---
 const session = await composio.create("user_123", {
   toolkits: ["gmail"],

@@ -98,8 +98,12 @@ const getUserProfile = experimental_createTool("GET_USER_PROFILE", {
 from pydantic import BaseModel, Field
 
 from composio import Composio
+from composio_openai_agents import OpenAIAgentsProvider
 
-composio = Composio(api_key="your_api_key")
+composio = Composio(
+    api_key="your_api_key",
+    provider=OpenAIAgentsProvider(),
+)
 
 
 class UserLookupInput(BaseModel):
@@ -497,9 +501,13 @@ preload applies to all tools in that toolkit; set `preload: false` /
 <Tab value="TypeScript">
 ```typescript
 import { Composio, experimental_createTool } from "@composio/core";
+import { OpenAIAgentsProvider } from "@composio/openai-agents";
 import { z } from "zod/v3";
 
-const composio = new Composio({ apiKey: "your_api_key" });
+const composio = new Composio({
+  apiKey: "your_api_key",
+  provider: new OpenAIAgentsProvider(),
+});
 
 const replyGuide = experimental_createTool("GET_REPLY_STYLE_GUIDE", {
   name: "Get reply style guide",
