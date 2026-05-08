@@ -4,12 +4,13 @@ description: "Sessions can now expose frequently used tools directly from sessio
 date: "2026-05-07"
 ---
 
-Sessions now support preloading known tools into `session.tools()` and the
-session MCP tool list. This works for Composio-managed tools, while SDK custom
-tools can be exposed directly from `session.tools()` with `preload: true`.
+Sessions now support preloading frequently used tools into `session.tools()` and
+the session MCP tool list, so agents can call them without searching each time.
+This works for Composio-managed tools, while SDK custom tools can be exposed
+directly from `session.tools()` with `preload: true`.
 
-Use preloading for small, stable tool sets. Keep the preloaded set focused,
-generally fewer than 20 tools, to avoid context bloat.
+Keep the preloaded set focused, generally fewer than 20 tools, to avoid context
+bloat.
 
 ### SDK versions
 
