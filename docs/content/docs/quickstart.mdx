@@ -322,6 +322,10 @@ composio = Composio()
 user_id = "user_123"
 session = composio.create(user_id=user_id)
 
+# For multi-turn, store the session ID and reuse instead of calling create() again:
+# session_id = session.session_id
+# session = composio.use(session_id)
+
 agent = Agent(
     name="Personal Assistant",
     instructions="You are a helpful personal assistant. Use Composio tools to take action.",
@@ -373,6 +377,10 @@ const composio = new Composio();
 // Create a session for your user
 const userId = "user_123";
 const session = await composio.create(userId);
+
+// For multi-turn, store the session ID and reuse instead of calling create() again:
+// const sessionId = session.sessionId;
+// const session = await composio.use(sessionId);
 
 const agent = new Agent({
   name: "Personal Assistant",
@@ -763,6 +771,10 @@ composio = Composio()
 user_id = "user_123"
 session = composio.create(user_id=user_id)
 
+# For multi-turn, store the session ID and reuse instead of calling create() again:
+# session_id = session.session_id
+# session = composio.use(session_id)
+
 options = ClaudeAgentOptions(
     system_prompt=(
         "You are a helpful assistant with access to external tools. "
@@ -821,6 +833,10 @@ const composio = new Composio();
 // Create a session for your user
 const userId = "user_123";
 const session = await composio.create(userId);
+
+// For multi-turn, store the session ID and reuse instead of calling create() again:
+// const sessionId = session.sessionId;
+// const session = await composio.use(sessionId);
 
 const options: Options = {
   systemPrompt: `You are a helpful assistant with access to external tools. ` +
@@ -1046,7 +1062,7 @@ Give your Vercel AI agent access to 1000+ tools (Gmail, GitHub, Slack, Notion, e
 **Rules**
 
 ALWAYS:
-- Use `mcp.url` and `mcp.headers` from the session — destructure with `const { mcp } = await composio.create(userId)`
+- Use `mcp.url` and `mcp.headers` from the session object returned by `composio.create(userId)`
 - Set transport type to `"http"` in createMCPClient
 - Set `maxSteps` to allow multi-step tool use (e.g., `maxSteps: 10`)
 - Close the MCP client when done: `await client.close()`
@@ -1077,7 +1093,7 @@ const result = await generateText({ model, tools, prompt });
 **Verify before responding**
 
 1. Is `Composio()` initialized WITHOUT a provider?
-2. Is `mcp.url` and `mcp.headers` destructured from `composio.create(userId)`?
+2. Are `mcp.url` and `mcp.headers` taken from the session returned by `composio.create(userId)`?
 3. Is transport type `"http"` in `createMCPClient`?
 4. Is `maxSteps` set in `streamText` / `generateText`?
 5. Is `client.close()` called when done?
