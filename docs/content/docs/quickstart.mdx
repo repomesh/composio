@@ -123,7 +123,7 @@ user_id = "user_123"
 session = composio.create(user_id=user_id)
 tools = session.tools()
 
-# For multi-turn, store the session ID and reuse instead of calling create() again:
+# For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 # session_id = session.session_id
 # session = composio.use(session_id)
 
@@ -172,7 +172,7 @@ const userId = "user_123";
 const session = await composio.create(userId);
 const tools = await session.tools();
 
-// For multi-turn, store the session ID and reuse instead of calling create() again:
+// For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 // const sessionId = session.sessionId;
 // const session = await composio.use(sessionId);
 
@@ -322,7 +322,7 @@ composio = Composio()
 user_id = "user_123"
 session = composio.create(user_id=user_id)
 
-# For multi-turn, store the session ID and reuse instead of calling create() again:
+# For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 # session_id = session.session_id
 # session = composio.use(session_id)
 
@@ -378,7 +378,7 @@ const composio = new Composio();
 const userId = "user_123";
 const session = await composio.create(userId);
 
-// For multi-turn, store the session ID and reuse instead of calling create() again:
+// For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 // const sessionId = session.sessionId;
 // const session = await composio.use(sessionId);
 
@@ -546,7 +546,7 @@ user_id = "user_123"
 session = composio.create(user_id=user_id)
 tools = session.tools()
 
-# For multi-turn, store the session ID and reuse instead of calling create() again:
+# For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 # session_id = session.session_id
 # session = composio.use(session_id)
 
@@ -602,7 +602,7 @@ const userId = "user_123";
 const session = await composio.create(userId);
 const tools = await session.tools();
 
-// For multi-turn, store the session ID and reuse instead of calling create() again:
+// For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 // const sessionId = session.sessionId;
 // const session = await composio.use(sessionId);
 
@@ -771,7 +771,7 @@ composio = Composio()
 user_id = "user_123"
 session = composio.create(user_id=user_id)
 
-# For multi-turn, store the session ID and reuse instead of calling create() again:
+# For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 # session_id = session.session_id
 # session = composio.use(session_id)
 
@@ -834,7 +834,7 @@ const composio = new Composio();
 const userId = "user_123";
 const session = await composio.create(userId);
 
-// For multi-turn, store the session ID and reuse instead of calling create() again:
+// For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 // const sessionId = session.sessionId;
 // const session = await composio.use(sessionId);
 
@@ -994,7 +994,7 @@ const userId = "user_123";
 const session = await composio.create(userId);
 const tools = await session.tools();
 
-// For multi-turn, store the session ID and reuse instead of calling create() again:
+// For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 // const sessionId = session.sessionId;
 // const session = await composio.use(sessionId);
 
@@ -1142,7 +1142,7 @@ const userId = "user_123";
 const composioSession = await composio.create(userId);
 const { mcp } = composioSession;
 
-// For multi-turn, store the session ID and reuse instead of calling create() again:
+// For multi-turn, store the session ID in your db and reuse instead of calling create() again:
 // const sessionId = composioSession.sessionId;
 // const composioSession = await composio.use(sessionId);
 
