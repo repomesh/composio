@@ -347,6 +347,10 @@ export const UpdateConnectedAccountParamsSchema = z.object({
  * Each field is optional, but at least one must be provided — passing an
  * empty object is rejected as a no-op.
  */
+// NOTE: `UpdateConnectedAccountAclParamsSchema` is a ZodEffects (because of
+// the `.refine` below) — it does not expose `.shape`. If you need to reuse
+// individual ACL fields elsewhere, pull them from
+// `ConnectedAccountAclConfigSchema.shape` (the unrefined base) instead.
 export const UpdateConnectedAccountAclParamsSchema = ConnectedAccountAclConfigSchema.refine(
   acl =>
     acl.allowAllUsers !== undefined ||

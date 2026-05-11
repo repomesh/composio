@@ -29,4 +29,4 @@ New error classes:
 
 No breaking changes. Existing `link()` callers without the new options get a `PRIVATE` connection exactly as today; existing `get()` / `list()` callers see new optional fields.
 
-Python SDK gets the matching change in the same release train.
+The Python SDK mirror ships in a separate PR — same wire contract, same release train.

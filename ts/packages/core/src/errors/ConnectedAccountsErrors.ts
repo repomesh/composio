@@ -57,19 +57,6 @@ export class ComposioFailedToCreateConnectedAccountLink extends ComposioError {
 }
 
 /**
- * Thrown by `composio.connectedAccounts.initiate()` when the legacy
- * `POST /api/v3/connected_accounts` endpoint rejects a Composio-managed
- * OAuth (OAuth1, OAuth2, DCR_OAUTH) auth-config request.
- *
- * The retiring path is being phased out — new orgs from 2026-05-08 and
- * all remaining orgs from 2026-07-03. Migrate the call to
- * `composio.connectedAccounts.link()`, which works for every redirectable
- * scheme regardless of whether the auth config is Composio-managed or
- * custom.
- *
- * See: https://docs.composio.dev/docs/changelog/2026/04/24
- */
-/**
  * Thrown when a tool execution attempts to use a SHARED connected account
  * but the requesting `userId` is not allowed by the connection's ACL.
  *
@@ -146,6 +133,19 @@ export class ComposioSharedConnectionNotAccessibleError extends ComposioError {
   }
 }
 
+/**
+ * Thrown by `composio.connectedAccounts.initiate()` when the legacy
+ * `POST /api/v3/connected_accounts` endpoint rejects a Composio-managed
+ * OAuth (OAuth1, OAuth2, DCR_OAUTH) auth-config request.
+ *
+ * The retiring path is being phased out — new orgs from 2026-05-08 and
+ * all remaining orgs from 2026-07-03. Migrate the call to
+ * `composio.connectedAccounts.link()`, which works for every redirectable
+ * scheme regardless of whether the auth config is Composio-managed or
+ * custom.
+ *
+ * See: https://docs.composio.dev/docs/changelog/2026/04/24
+ */
 export class ComposioLegacyConnectedAccountsEndpointRetiredError extends ComposioError {
   constructor(
     message: string = 'POST /api/v3/connected_accounts is no longer supported for Composio-managed OAuth auth configs. Use composio.connectedAccounts.link() instead.',

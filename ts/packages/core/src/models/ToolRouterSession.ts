@@ -1,5 +1,5 @@
 import { telemetry } from '../telemetry/Telemetry';
-import { Composio as ComposioClient } from '@composio/client';
+import { Composio as ComposioClient, BadRequestError } from '@composio/client';
 import { BaseComposioProvider } from '../provider/BaseProvider';
 import { ComposioConfig } from '../composio';
 import {
@@ -33,7 +33,7 @@ import {
 } from '../types/connectedAccounts.types';
 import { transform } from '../utils/transform';
 import { ToolkitConnectionStateSchema } from '../types/toolRouter.types';
-import { ValidationError } from '../errors';
+import { ComposioAclOnlyForSharedError, ValidationError } from '../errors';
 import { Tools } from './Tools';
 import { ToolRouterSessionFilesMount } from './ToolRouterSessionFileMount';
 import type {
@@ -47,6 +47,7 @@ import type { Tool, ToolExecuteResponse } from '../types/tool.types';
 import type { SessionProxyExecuteParams } from '../types/toolRouter.types';
 import type {
   SessionExecuteParams,
+  SessionLinkParams,
   SessionSearchParams,
 } from '@composio/client/resources/tool-router/session/session.mjs';
 import { SessionProxyExecuteParamsSchema } from '../types/toolRouter.types';
@@ -321,7 +322,7 @@ export class ToolRouterSession<
       aclConfigForShared?: ConnectedAccountAclConfig;
     }
   ): Promise<ConnectionRequest> {
-    const aclWire =
+    const aclWire: SessionLinkParams.ACLConfigForShared | undefined =
       options?.aclConfigForShared === undefined
         ? undefined
         : {
@@ -335,19 +336,30 @@ export class ToolRouterSession<
               not_allowed_user_ids: options.aclConfigForShared.notAllowedUserIds,
             }),
           };
-    // Cast retained until @composio/client adds account_type +
-    // acl_config_for_shared to SessionLinkParams (Hermes #9860 + #9902).
-    const body = {
+    const body: SessionLinkParams = {
       toolkit,
-      ...(options?.callbackUrl && { callback_url: options.callbackUrl }),
-      ...(options?.alias != null && { alias: options.alias }),
+      ...(options?.callbackUrl !== undefined && { callback_url: options.callbackUrl }),
+      ...(options?.alias !== undefined && { alias: options.alias }),
       ...(options?.accountType !== undefined && { account_type: options.accountType }),
       ...(aclWire !== undefined && { acl_config_for_shared: aclWire }),
     };
-    const response = await this.client.toolRouter.session.link(
-      this.sessionId,
-      body as unknown as Parameters<typeof this.client.toolRouter.session.link>[1]
-    );
+
+    let response;
+    try {
+      response = await this.client.toolRouter.session.link(this.sessionId, body);
+    } catch (error) {
+      // Backend rejects ACL fields on PRIVATE connections with a 400 +
+      // `ConnectedAccount_AclOnlyForShared`. Surface it as a typed error
+      // mirroring `composio.connectedAccounts.link()`.
+      if (
+        error instanceof BadRequestError &&
+        typeof error.message === 'string' &&
+        error.message.includes('acl_config_for_shared is only valid on SHARED')
+      ) {
+        throw new ComposioAclOnlyForSharedError(error.message, { cause: error });
+      }
+      throw error;
+    }
 
     return createConnectionRequest(
       this.client,
