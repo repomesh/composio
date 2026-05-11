@@ -34,8 +34,7 @@ export type ConnectedAccountStatusEnum = z.infer<typeof ConnectedAccountStatusSc
  * - `SHARED`: can be used by other `userId`s, but only when the connection
  *   is explicitly pinned in a tool-router session's config and only when
  *   the requesting `userId` passes the connection's ACL (see
- *   `allowAllUsers` / `allowedUserIds` / `notAllowedUserIds`). Set at
- *   creation time only — cannot be changed later.
+ *   `allowAllUsers` / `allowedUserIds` / `notAllowedUserIds`).
  */
 export const ConnectedAccountTypes = {
   PRIVATE: 'PRIVATE',
@@ -298,7 +297,7 @@ export const CreateConnectedAccountLinkOptionsSchema = z.object({
    * by the owning `userId`. `SHARED` can be used by other `userId`s — but
    * only when the connection is explicitly pinned in a tool-router session's
    * config and only when the requesting `userId` passes the connection's
-   * ACL. Set at creation time only.
+   * ACL.
    */
   accountType: ConnectedAccountTypeSchema.optional(),
   /**
