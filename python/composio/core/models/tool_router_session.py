@@ -552,13 +552,12 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
         :param alias: Human-readable alias for the connection. Must be unique
             per userId and toolkit within the project.
         :param account_type: Sharing model for the new connection. ``PRIVATE``
-            (default) is usable only by the owning user. ``SHARED`` lets other
-            users in the project use the connection when pinned. Set at create
-            time only.
-        :param acl_config_for_shared: Per-user ACL for SHARED connections. Only
-            valid when ``account_type == 'SHARED'`` — the backend rejects ACL
-            on a PRIVATE connection with ``ComposioAclOnlyForSharedError``
-            (400).
+            (default) is usable only by the owning ``user_id``. ``SHARED`` can
+            be used by other ``user_id``s when the connection is pinned in a
+            tool-router session and the requesting user passes its ACL.
+        :param acl_config_for_shared: Per-user ACL for SHARED connections.
+            Only valid when ``account_type == 'SHARED'``; raises
+            ``ComposioAclOnlyForSharedError`` on a PRIVATE connection.
         """
         try:
             response = self._client.tool_router.session.link(
@@ -572,8 +571,8 @@ class ToolRouterSession(t.Generic[TTool, TToolCollection]):
                 ),
             )
         except BadRequestError as error:
-            # Mirrors the mapper on ``composio.connected_accounts.link()`` —
-            # the same backend handler returns ``AclOnlyForShared`` here.
+            # The server rejects ACL on PRIVATE connections — surface that
+            # as a typed error mirroring ``composio.connected_accounts.link()``.
             message = str(error)
             if "acl_config_for_shared is only valid on SHARED" in message:
                 raise exceptions.ComposioAclOnlyForSharedError(message) from error

@@ -543,11 +543,8 @@ def _make_bad_request_error(message: str):
 
 
 class TestConnectedAccountsAcl:
-    """Tests for accountType + per-user ACL surfacing (Hermes #9860, #9902).
-
-    Mirrors the 12 behaviour tests in
-    ``ts/packages/core/test/connectedAccounts/connectedAccounts.test.ts``.
-    """
+    """Tests for ``account_type`` + per-user ACL surfacing on ``link()``
+    and ``update_acl()``."""
 
     @pytest.fixture
     def mock_client(self):

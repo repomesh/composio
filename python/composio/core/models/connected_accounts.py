@@ -578,14 +578,14 @@ class ConnectedAccounts:
             ``ACTIVE`` connection on this auth config. Pair with ``alias`` and a
             session-level ``multi_account`` config to disambiguate at execution time.
         :param account_type: Sharing model for the new connection. ``PRIVATE``
-            (default) is usable only by the owning ``user_id``. ``SHARED`` is
-            reachable from a tool-router session by other users in the project,
-            but only when explicitly pinned and only when the requesting
-            ``user_id`` passes the connection's ACL. Set at create time only.
-        :param acl_config_for_shared: Per-user ACL for SHARED connections. Only
-            valid when ``account_type == 'SHARED'`` — the backend rejects ACL
-            on a PRIVATE connection with ``ComposioAclOnlyForSharedError``
-            (400). Pass an ``ACLConfigForShared`` dict with any combination of
+            (default) is usable only by the owning ``user_id``. ``SHARED`` can
+            be used by other ``user_id``s — but only when the connection is
+            explicitly pinned in a tool-router session's config and only when
+            the requesting ``user_id`` passes the connection's ACL.
+        :param acl_config_for_shared: Per-user ACL for SHARED connections.
+            Only valid when ``account_type == 'SHARED'``; raises
+            ``ComposioAclOnlyForSharedError`` on a PRIVATE connection. Pass
+            an ``ACLConfigForShared`` dict with any combination of
             ``allow_all_users``, ``allowed_user_ids``, ``not_allowed_user_ids``.
             Omit to keep deny-by-default (only the creator can use).
         :return: Connection request object.
@@ -652,9 +652,9 @@ class ConnectedAccounts:
                 ),
             )
         except BadRequestError as error:
-            # Backend rejects ACL on PRIVATE rows with 400 +
-            # ``ConnectedAccount_AclOnlyForShared``. Surface it as a typed
-            # error so callers can ``except`` instead of grepping messages.
+            # The server rejects ACL on PRIVATE connections — surface that
+            # as a typed error so callers can ``except`` instead of grepping
+            # messages.
             message = str(error)
             if "acl_config_for_shared is only valid on SHARED" in message:
                 raise exceptions.ComposioAclOnlyForSharedError(message) from error
@@ -678,53 +678,27 @@ class ConnectedAccounts:
         """
         Update the per-user ACL on a SHARED connected account.
 
-        Only meaningful for SHARED connections — the backend rejects ACL
-        writes on PRIVATE rows with ``ComposioAclOnlyForSharedError`` (400).
-        Auth gate is creator-or-API-key (a non-creator project member
-        updating an alias on a SHARED row still works via :meth:`update`,
-        but ACL writes do not).
-
-        PATCH semantics: omit a parameter to leave it unchanged; pass an
-        empty list to clear an allow/deny list. At least one parameter must
-        be provided — calling with all three as ``None`` raises
-        :class:`composio.exceptions.ValidationError`.
-
-        Resolution rule (deny wins):
-          1. requesting user_id in ``not_allowed_user_ids`` → DENY
-          2. ``allow_all_users == True``                    → ALLOW
-          3. requesting user_id in ``allowed_user_ids``     → ALLOW
-          4. otherwise                                      → DENY
+        Only valid on SHARED connections; raises
+        ``ComposioAclOnlyForSharedError`` on a PRIVATE connection. Omit a
+        parameter to leave it unchanged; pass an empty list to clear an
+        allow/deny list. At least one parameter must be provided.
 
         :param nanoid: The connected account ID (``ca_xxx``).
-        :param allow_all_users: Wildcard "any user_id in the project" allow.
-        :param allowed_user_ids: Explicit allow list. Pass ``[]`` to clear.
+        :param allow_all_users: When True, any ``user_id`` may use this
+            SHARED connection (subject to the deny list).
+        :param allowed_user_ids: Explicit list of allowed ``user_id`` strings.
+            Pass ``[]`` to clear.
         :param not_allowed_user_ids: Explicit deny list (wins over allow on
             conflict). Pass ``[]`` to clear — note that clearing the deny
             list silently re-grants access to previously-blocked users.
-        :return: PATCH response (``id``, ``status``, ``success``). To read
-            back the updated ``acl_config_for_shared`` block, call
-            :meth:`get` after this returns.
+        :return: Response with ``id``, ``status``, and ``success``.
 
-        Example::
-
-            # Open access to everyone in the project
-            composio.connected_accounts.update_acl('ca_abc', allow_all_users=True)
-
-            # Everyone except a specific user
+        Example:
             composio.connected_accounts.update_acl(
                 'ca_abc',
                 allow_all_users=True,
                 not_allowed_user_ids=['user_bob'],
             )
-
-            # Targeted allow
-            composio.connected_accounts.update_acl(
-                'ca_abc',
-                allowed_user_ids=['user_alice', 'user_bob'],
-            )
-
-            # Revoke a previously-granted allow list (back to deny-by-default)
-            composio.connected_accounts.update_acl('ca_abc', allowed_user_ids=[])
         """
         if (
             allow_all_users is None

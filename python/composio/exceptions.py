@@ -334,12 +334,8 @@ class ComposioLegacyConnectedAccountsEndpointRetiredError(ConnectedAccountError)
 class ComposioAclOnlyForSharedError(ConnectedAccountError):
     """Raised when ACL fields (``allow_all_users``, ``allowed_user_ids``,
     ``not_allowed_user_ids``) are sent on a ``PRIVATE`` connection — at
-    create time or via PATCH.
-
-    ACL is only meaningful for ``SHARED`` connections; the matching layer
-    never reads it for PRIVATE. Backend rejects with 400 +
-    ``ConnectedAccount_AclOnlyForShared`` rather than silently ignoring the
-    ACL block, so developer misconfiguration surfaces loudly.
+    create time or via PATCH. ACL is only meaningful for ``SHARED``
+    connections.
 
     Fix: set ``account_type='SHARED'`` at create time, or omit the ACL
     fields when creating/updating a PRIVATE connection.
@@ -353,17 +349,14 @@ class ComposioSharedAccessDeniedError(ConnectedAccountError):
     account but the requesting ``user_id`` is not allowed by the
     connection's ACL.
 
-    Surfaces from the matching layer when a SHARED connection is reached
-    directly (e.g. via ``composio.tools.execute(slug, connected_account_id=...)``)
-    without going through a tool-router session that already pre-flighted
-    the ACL at session-create time.
+    Surfaces when a SHARED connection is reached directly (e.g. via
+    ``composio.tools.execute(slug, connected_account_id=...)``) without
+    going through a tool-router session.
 
     Fix: ask the connection's creator to grant access via
     ``composio.connected_accounts.update_acl()`` — set ``allow_all_users``,
     add the ``user_id`` to ``allowed_user_ids``, or remove it from
     ``not_allowed_user_ids``.
-
-    Backend response: 403 with code ``ConnectedAccount_SharedAccessDenied``.
     """
 
     pass
@@ -372,15 +365,12 @@ class ComposioSharedAccessDeniedError(ConnectedAccountError):
 class ComposioSharedConnectionNotAccessibleError(ConnectedAccountError):
     """Raised by tool-router session create / PATCH when the session's
     ``user_id`` cannot use a pinned SHARED connection — caught at
-    session-create time so the session never enters a state that 4xxs
+    session-create time so the session never enters a state that fails
     mid-execution.
 
     Fix: grant the session user access via
     ``composio.connected_accounts.update_acl()`` on the pinned connection,
     or pin a different connection the user can use.
-
-    Backend response: 400 with code
-    ``ToolRouterV2_SharedConnectionNotAccessible``.
     """
 
     pass
