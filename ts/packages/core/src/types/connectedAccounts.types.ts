@@ -51,35 +51,58 @@ export type ConnectedAccountType =
 /**
  * Per-user access control for a SHARED connected account. Inert for PRIVATE.
  *
+ * On the wire this lives under `acl_config_for_shared` — a single JSONB
+ * column on `connected_accounts`. The SDK exposes the inner shape as
+ * `aclConfigForShared` on inputs and responses (omit the block to mean
+ * "don't touch ACL" on create / PATCH; absence on a response means the
+ * caller isn't allowed to see the ACL).
+ *
  * Resolution rule (deny wins):
  *   1. requesting userId in `notAllowedUserIds` → DENY
  *   2. `allowAllUsers === true`                 → ALLOW
  *   3. requesting userId in `allowedUserIds`    → ALLOW
  *   4. otherwise                                → DENY  (deny-by-default)
  *
- * Default state (`allowAllUsers=false`, both arrays empty) means only the
- * connection's creator can use it. The creator must grant access explicitly.
+ * Default state (block omitted or `{}`) means only the connection's creator
+ * can use it. The creator must grant access explicitly.
  *
- * Lists are capped at 1000 entries each by the backend.
+ * Backend caps: each list ≤1000 entries; each user_id 1..256 chars.
  */
-const ACL_LIST_LIMIT = 1000;
-export const ConnectedAccountAclSchema = z.object({
+const ACL_LIST_MAX_LENGTH = 1000;
+const ACL_USER_ID_MAX_LENGTH = 256;
+const aclUserIdString = z.string().min(1).max(ACL_USER_ID_MAX_LENGTH);
+
+export const ConnectedAccountAclConfigSchema = z.object({
   allowAllUsers: z
     .boolean()
     .optional()
     .describe('Wildcard "any user_id in the project" allow toggle. Default false.'),
   allowedUserIds: z
-    .array(z.string())
-    .max(ACL_LIST_LIMIT)
+    .array(aclUserIdString)
+    .max(ACL_LIST_MAX_LENGTH)
     .optional()
     .describe('Explicit allow list (developer-assigned user_id strings). Default [].'),
   notAllowedUserIds: z
-    .array(z.string())
-    .max(ACL_LIST_LIMIT)
+    .array(aclUserIdString)
+    .max(ACL_LIST_MAX_LENGTH)
     .optional()
     .describe('Explicit deny list. Wins over allow on conflict. Default [].'),
 });
-export type ConnectedAccountAcl = z.infer<typeof ConnectedAccountAclSchema>;
+export type ConnectedAccountAclConfig = z.infer<typeof ConnectedAccountAclConfigSchema>;
+
+/**
+ * Resolved ACL as it appears on responses (creator / API-key callers).
+ * All three fields are populated when the block is visible; the block
+ * itself is absent for non-creator cookie callers.
+ */
+export const ConnectedAccountAclConfigResponseSchema = z.object({
+  allowAllUsers: z.boolean(),
+  allowedUserIds: z.array(z.string()),
+  notAllowedUserIds: z.array(z.string()),
+});
+export type ConnectedAccountAclConfigResponse = z.infer<
+  typeof ConnectedAccountAclConfigResponseSchema
+>;
 
 export const CreateConnectedAccountParamsSchema = z.object({
   authConfig: z.object({
@@ -163,9 +186,7 @@ export const ConnectedAccountRetrieveResponseSchema: z.ZodType<{
   createdAt: string;
   updatedAt: string;
   accountType?: ConnectedAccountType;
-  allowAllUsers?: boolean;
-  allowedUserIds?: string[];
-  notAllowedUserIds?: string[];
+  aclConfigForShared?: ConnectedAccountAclConfigResponse;
 }> = z.object({
   id: z.string(),
   authConfig: ConnectedAccountAuthConfigSchema,
@@ -190,12 +211,12 @@ export const ConnectedAccountRetrieveResponseSchema: z.ZodType<{
   createdAt: z.string(),
   updatedAt: z.string(),
   accountType: ConnectedAccountTypeSchema.optional(),
-  // ACL fields are only present on responses when the caller is the creator
-  // or is using a project/org API key — cookie callers who can use the
-  // connection but aren't its creator see the row without these fields.
-  allowAllUsers: z.boolean().optional(),
-  allowedUserIds: z.array(z.string()).optional(),
-  notAllowedUserIds: z.array(z.string()).optional(),
+  // `acl_config_for_shared` is only present on responses when the caller is
+  // the connection's creator or is using a project/org API key. Non-creator
+  // cookie callers see the row without this block — left as `undefined`
+  // here so callers can distinguish "I can't see the ACL" from "ACL is the
+  // default deny-by-default state".
+  aclConfigForShared: ConnectedAccountAclConfigResponseSchema.optional(),
 });
 
 export type ConnectedAccountRetrieveResponse = z.infer<
@@ -279,16 +300,16 @@ export const CreateConnectedAccountLinkOptionsSchema = z.object({
    */
   accountType: ConnectedAccountTypeSchema.optional(),
   /**
-   * ACL for SHARED connections. Ignored when `accountType !== 'SHARED'`; the
-   * backend rejects ACL fields on a `PRIVATE` connection with `AclOnlyForShared`.
+   * Per-user ACL for SHARED connections. Only valid when
+   * `accountType === 'SHARED'` — the backend rejects ACL on a PRIVATE
+   * connection with `ComposioAclOnlyForSharedError` (400).
    *
-   * Default (deny-by-default): only the creator can use the connection. Grant
-   * access by setting `allowAllUsers: true` or by listing user IDs in
-   * `allowedUserIds`. `notAllowedUserIds` always wins over allow.
+   * Omit the block (or pass `{}`) to keep the deny-by-default state: only the
+   * creator can use the connection. Grant access by setting
+   * `allowAllUsers: true` or listing user IDs in `allowedUserIds`.
+   * `notAllowedUserIds` always wins over allow.
    */
-  allowAllUsers: ConnectedAccountAclSchema.shape.allowAllUsers,
-  allowedUserIds: ConnectedAccountAclSchema.shape.allowedUserIds,
-  notAllowedUserIds: ConnectedAccountAclSchema.shape.notAllowedUserIds,
+  aclConfigForShared: ConnectedAccountAclConfigSchema.optional(),
 });
 export type CreateConnectedAccountLinkOptions = z.infer<
   typeof CreateConnectedAccountLinkOptionsSchema
@@ -315,16 +336,18 @@ export const UpdateConnectedAccountParamsSchema = z.object({
 });
 
 /**
- * Params for `composio.connectedAccounts.updateAcl()`.
+ * Params for `composio.connectedAccounts.updateAcl()`. Mirrors the inner
+ * shape of the wire's `acl_config_for_shared` block — the SDK adds the
+ * outer nesting at the boundary, so callers pass the three fields flat.
  *
- * PATCH-style semantics — omit a field to leave it unchanged; pass an empty
- * array to clear an allow/deny list. Backend rejects ACL writes on a
- * `PRIVATE` connection with `AclOnlyForShared` (400).
+ * PATCH-style semantics — omit a field to leave it unchanged; pass an
+ * empty array to clear an allow/deny list. Backend rejects ACL writes on
+ * a PRIVATE connection with `ComposioAclOnlyForSharedError` (400).
  *
  * Each field is optional, but at least one must be provided — passing an
  * empty object is rejected as a no-op.
  */
-export const UpdateConnectedAccountAclParamsSchema = ConnectedAccountAclSchema.refine(
+export const UpdateConnectedAccountAclParamsSchema = ConnectedAccountAclConfigSchema.refine(
   acl =>
     acl.allowAllUsers !== undefined ||
     acl.allowedUserIds !== undefined ||

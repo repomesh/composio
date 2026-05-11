@@ -52,10 +52,17 @@ import { ConnectionData } from '../types/connectedAccountAuthStates.types';
 // warning on every initiate() call.
 let _legacyInitiateWarningEmitted = false;
 
-// Wire-level fields added by Hermes #9860 / #9882 (account_type) and #9902
-// (ACL). Once @composio/client is regenerated against a backend spec that
-// includes these, this local extension can be removed and we can rely on the
-// generated `LinkCreateParams` directly.
+// Wire-level fields added by Hermes #9860 / #9882 (account_type) and
+// merged #9902 (ACL). 9902 nests ACL under a single `acl_config_for_shared`
+// object (single JSONB column under the hood). Once @composio/client is
+// regenerated against the post-9902 backend spec, this local extension can
+// be removed and we can rely on the generated `LinkCreateParams` directly.
+type AclConfigWireShape = {
+  allow_all_users?: boolean;
+  allowed_user_ids?: string[];
+  not_allowed_user_ids?: string[];
+};
+
 type LinkCreateBodyWithAcl = ConnectedAccountCreateParamsRaw extends never
   ? never
   : Record<string, unknown> & {
@@ -64,20 +71,39 @@ type LinkCreateBodyWithAcl = ConnectedAccountCreateParamsRaw extends never
       alias?: string;
       callback_url?: string;
       account_type?: 'PRIVATE' | 'SHARED';
-      allow_all_users?: boolean;
-      allowed_user_ids?: string[];
-      not_allowed_user_ids?: string[];
+      acl_config_for_shared?: AclConfigWireShape;
     };
 
-// Wire-level body for PATCH /connected_accounts/{id} with ACL fields
-// (Hermes #9902). Mirrors the same forward-compat pattern as
-// `LinkCreateBodyWithAcl` above.
+// Wire-level body for PATCH /connected_accounts/{id} with ACL.
 type ConnectedAccountPatchBodyWithAcl = {
   alias?: string;
-  allow_all_users?: boolean;
-  allowed_user_ids?: string[];
-  not_allowed_user_ids?: string[];
+  acl_config_for_shared?: AclConfigWireShape;
 };
+
+/**
+ * Serialise the SDK's `aclConfigForShared` (camelCase, top-level optional)
+ * to the wire's `acl_config_for_shared` block. Returns `undefined` when the
+ * caller didn't pass anything (PATCH-style "don't touch ACL"); returns
+ * `{}` when the caller passed an explicit empty object (also "no fields to
+ * change", but encodes the explicit intent — the backend treats both the
+ * same way today).
+ */
+function serializeAclConfigForWire(
+  acl:
+    | {
+        allowAllUsers?: boolean;
+        allowedUserIds?: string[];
+        notAllowedUserIds?: string[];
+      }
+    | undefined
+): AclConfigWireShape | undefined {
+  if (acl === undefined) return undefined;
+  return {
+    ...(acl.allowAllUsers !== undefined && { allow_all_users: acl.allowAllUsers }),
+    ...(acl.allowedUserIds !== undefined && { allowed_user_ids: acl.allowedUserIds }),
+    ...(acl.notAllowedUserIds !== undefined && { not_allowed_user_ids: acl.notAllowedUserIds }),
+  };
+}
 
 /**
  * ConnectedAccounts class
@@ -396,17 +422,14 @@ export class ConnectedAccounts {
     }
 
     const opts = requestOptions.data;
+    const aclWire = serializeAclConfigForWire(opts.aclConfigForShared);
     const body: LinkCreateBodyWithAcl = {
       auth_config_id: authConfigId,
       user_id: userId,
       ...(opts.callbackUrl && { callback_url: opts.callbackUrl }),
       ...(opts.alias != null && { alias: opts.alias }),
       ...(opts.accountType !== undefined && { account_type: opts.accountType }),
-      ...(opts.allowAllUsers !== undefined && { allow_all_users: opts.allowAllUsers }),
-      ...(opts.allowedUserIds !== undefined && { allowed_user_ids: opts.allowedUserIds }),
-      ...(opts.notAllowedUserIds !== undefined && {
-        not_allowed_user_ids: opts.notAllowedUserIds,
-      }),
+      ...(aclWire !== undefined && { acl_config_for_shared: aclWire }),
     };
 
     try {
@@ -683,18 +706,10 @@ export class ConnectedAccounts {
     }
 
     const body: ConnectedAccountPatchBodyWithAcl = {
-      ...(parsedParams.data.allowAllUsers !== undefined && {
-        allow_all_users: parsedParams.data.allowAllUsers,
-      }),
-      ...(parsedParams.data.allowedUserIds !== undefined && {
-        allowed_user_ids: parsedParams.data.allowedUserIds,
-      }),
-      ...(parsedParams.data.notAllowedUserIds !== undefined && {
-        not_allowed_user_ids: parsedParams.data.notAllowedUserIds,
-      }),
+      acl_config_for_shared: serializeAclConfigForWire(parsedParams.data),
     };
 
-    // Cast retained until @composio/client adds ACL fields to
+    // Cast retained until @composio/client adds acl_config_for_shared to
     // ConnectedAccountPatchParams.
     await this.client.connectedAccounts.patch(
       nanoid,

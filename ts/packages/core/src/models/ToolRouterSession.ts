@@ -26,7 +26,11 @@ import {
 import { SessionMetaToolOptions } from '../types/modifiers.types';
 import { ConnectionRequest } from '../types/connectionRequest.types';
 import { createConnectionRequest } from './ConnectionRequest';
-import { ConnectedAccountStatuses } from '../types/connectedAccounts.types';
+import {
+  ConnectedAccountStatuses,
+  ConnectedAccountType,
+  ConnectedAccountAclConfig,
+} from '../types/connectedAccounts.types';
 import { transform } from '../utils/transform';
 import { ToolkitConnectionStateSchema } from '../types/toolRouter.types';
 import { ValidationError } from '../errors';
@@ -303,16 +307,47 @@ export class ToolRouterSession<
   /**
    * Initiate an authorization flow for a toolkit.
    * Returns a ConnectionRequest with a redirect URL for the user.
+   *
+   * `accountType` and `aclConfigForShared` (Hermes #9860, #9902) let the
+   * caller create a SHARED connection with a per-user ACL in one flow.
+   * Default behaviour (omit both) creates a PRIVATE connection.
    */
   async authorize(
     toolkit: string,
-    options?: { callbackUrl?: string; alias?: string }
+    options?: {
+      callbackUrl?: string;
+      alias?: string;
+      accountType?: ConnectedAccountType;
+      aclConfigForShared?: ConnectedAccountAclConfig;
+    }
   ): Promise<ConnectionRequest> {
-    const response = await this.client.toolRouter.session.link(this.sessionId, {
+    const aclWire =
+      options?.aclConfigForShared === undefined
+        ? undefined
+        : {
+            ...(options.aclConfigForShared.allowAllUsers !== undefined && {
+              allow_all_users: options.aclConfigForShared.allowAllUsers,
+            }),
+            ...(options.aclConfigForShared.allowedUserIds !== undefined && {
+              allowed_user_ids: options.aclConfigForShared.allowedUserIds,
+            }),
+            ...(options.aclConfigForShared.notAllowedUserIds !== undefined && {
+              not_allowed_user_ids: options.aclConfigForShared.notAllowedUserIds,
+            }),
+          };
+    // Cast retained until @composio/client adds account_type +
+    // acl_config_for_shared to SessionLinkParams (Hermes #9860 + #9902).
+    const body = {
       toolkit,
       ...(options?.callbackUrl && { callback_url: options.callbackUrl }),
       ...(options?.alias != null && { alias: options.alias }),
-    });
+      ...(options?.accountType !== undefined && { account_type: options.accountType }),
+      ...(aclWire !== undefined && { acl_config_for_shared: aclWire }),
+    };
+    const response = await this.client.toolRouter.session.link(
+      this.sessionId,
+      body as unknown as Parameters<typeof this.client.toolRouter.session.link>[1]
+    );
 
     return createConnectionRequest(
       this.client,
