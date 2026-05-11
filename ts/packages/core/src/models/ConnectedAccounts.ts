@@ -9,6 +9,8 @@ import ComposioClient, { BadRequestError } from '@composio/client';
 import {
   ConnectedAccountCreateResponse,
   ConnectedAccountDeleteResponse,
+  ConnectedAccountPatchParams,
+  ConnectedAccountPatchResponse,
   ConnectedAccountRefreshParams,
   ConnectedAccountRefreshResponse,
   ConnectedAccountUpdateStatusParams,
@@ -16,6 +18,7 @@ import {
   ConnectedAccountListParams as ConnectedAccountListParamsRaw,
   ConnectedAccountCreateParams as ConnectedAccountCreateParamsRaw,
 } from '@composio/client/resources/connected-accounts';
+import { LinkCreateParams } from '@composio/client/resources/link';
 import {
   CreateConnectedAccountOptions,
   ConnectedAccountRetrieveResponse,
@@ -29,6 +32,8 @@ import {
   ConnectedAccountRefreshOptionsSchema,
   UpdateConnectedAccountParams,
   UpdateConnectedAccountParamsSchema,
+  UpdateConnectedAccountAclParams,
+  UpdateConnectedAccountAclParamsSchema,
 } from '../types/connectedAccounts.types';
 import { ConnectionRequest } from '../types/connectionRequest.types';
 import { createConnectionRequest } from './ConnectionRequest';
@@ -39,6 +44,7 @@ import {
   transformConnectedAccountResponse,
 } from '../utils/transformers/connectedAccounts';
 import {
+  ComposioAclOnlyForSharedError,
   ComposioFailedToCreateConnectedAccountLink,
   ComposioLegacyConnectedAccountsEndpointRetiredError,
   ComposioMultipleConnectedAccountsError,
@@ -49,6 +55,31 @@ import { ConnectionData } from '../types/connectedAccountAuthStates.types';
 // One-time-per-process guard so long-running services don't spam the deprecation
 // warning on every initiate() call.
 let _legacyInitiateWarningEmitted = false;
+
+/**
+ * Serialise the SDK's `aclConfigForShared` (camelCase) to the wire's
+ * `acl_config_for_shared` block. Returns `undefined` when the caller
+ * didn't pass anything (PATCH-style "don't touch ACL"); returns `{}`
+ * when the caller passed an explicit empty object — both mean
+ * deny-by-default, but the explicit form preserves the caller's intent
+ * in network traces.
+ */
+function serializeAclConfigForWire(
+  acl:
+    | {
+        allowAllUsers?: boolean;
+        allowedUserIds?: string[];
+        notAllowedUserIds?: string[];
+      }
+    | undefined
+): LinkCreateParams.ACLConfigForShared | undefined {
+  if (acl === undefined) return undefined;
+  return {
+    ...(acl.allowAllUsers !== undefined && { allow_all_users: acl.allowAllUsers }),
+    ...(acl.allowedUserIds !== undefined && { allowed_user_ids: acl.allowedUserIds }),
+    ...(acl.notAllowedUserIds !== undefined && { not_allowed_user_ids: acl.notAllowedUserIds }),
+  };
+}
 
 /**
  * ConnectedAccounts class
@@ -366,13 +397,19 @@ export class ConnectedAccounts {
       );
     }
 
+    const opts = requestOptions.data;
+    const aclWire = serializeAclConfigForWire(opts.aclConfigForShared);
+    const body: LinkCreateParams = {
+      auth_config_id: authConfigId,
+      user_id: userId,
+      ...(opts.callbackUrl !== undefined && { callback_url: opts.callbackUrl }),
+      ...(opts.alias !== undefined && { alias: opts.alias }),
+      ...(opts.accountType !== undefined && { account_type: opts.accountType }),
+      ...(aclWire !== undefined && { acl_config_for_shared: aclWire }),
+    };
+
     try {
-      const response = await this.client.link.create({
-        auth_config_id: authConfigId,
-        user_id: userId,
-        ...(requestOptions?.data.callbackUrl && { callback_url: requestOptions.data.callbackUrl }),
-        ...(requestOptions?.data.alias != null && { alias: requestOptions.data.alias }),
-      });
+      const response = await this.client.link.create(body);
 
       const connectionRequest = createConnectionRequest(
         this.client,
@@ -382,6 +419,15 @@ export class ConnectedAccounts {
       );
       return connectionRequest;
     } catch (error) {
+      // The server rejects ACL on PRIVATE connections — surface that as a
+      // typed error so callers can `instanceof` instead of grepping messages.
+      if (
+        error instanceof BadRequestError &&
+        typeof error.message === 'string' &&
+        error.message.includes('acl_config_for_shared is only valid on SHARED')
+      ) {
+        throw new ComposioAclOnlyForSharedError(error.message, { cause: error });
+      }
       throw new ComposioFailedToCreateConnectedAccountLink(
         'Failed to create connected account link',
         {
@@ -569,7 +615,9 @@ export class ConnectedAccounts {
   }
 
   /**
-   * Update a connected account's alias and/or credentials.
+   * Enable or disable a connected account. Accepts `{ enabled: boolean }`.
+   *
+   * For ACL writes on SHARED connections, see {@link updateAcl}.
    *
    * @param {string} nanoid - The unique identifier of the connected account
    * @param {UpdateConnectedAccountParams} params - The update parameters
@@ -593,5 +641,86 @@ export class ConnectedAccounts {
     }
 
     return this.client.connectedAccounts.updateStatus(nanoid, parsedParams.data);
+  }
+
+  /**
+   * Update the per-user ACL on a SHARED connected account.
+   *
+   * Only meaningful for SHARED connections — calling this on a PRIVATE
+   * connection raises `ComposioAclOnlyForSharedError` (400). ACL writes
+   * require the connection's creator or an API key; alias edits via
+   * {@link update} are governed separately.
+   *
+   * PATCH semantics: omit a field to leave it unchanged; pass an empty array
+   * to clear an allow/deny list. At least one field must be provided.
+   *
+   * Resolution rule (deny wins):
+   *   1. requesting `userId` in `notAllowedUserIds` → DENY
+   *   2. `allowAllUsers === true`                   → ALLOW
+   *   3. requesting `userId` in `allowedUserIds`    → ALLOW
+   *   4. otherwise                                  → DENY
+   *
+   * @example
+   * ```typescript
+   * // Allow every userId to use this connection
+   * await composio.connectedAccounts.updateAcl('ca_abc', { allowAllUsers: true });
+   *
+   * // Everyone except a specific user
+   * await composio.connectedAccounts.updateAcl('ca_abc', {
+   *   allowAllUsers: true,
+   *   notAllowedUserIds: ['user_bob'],
+   * });
+   *
+   * // Targeted allow
+   * await composio.connectedAccounts.updateAcl('ca_abc', {
+   *   allowedUserIds: ['user_alice', 'user_bob'],
+   * });
+   *
+   * // Revoke a previously-granted allow list (back to deny-by-default)
+   * await composio.connectedAccounts.updateAcl('ca_abc', { allowedUserIds: [] });
+   * ```
+   *
+   * **Empty-array semantics — read carefully.** Passing `[]` for either
+   * list **replaces** the list, it does not extend it:
+   *
+   * - `allowedUserIds: []` → revoke all previously-granted user IDs (state
+   *   reverts to deny-by-default unless `allowAllUsers` is true).
+   * - `notAllowedUserIds: []` → **clears the deny list**, which silently
+   *   re-grants access to users you previously blocked. Always pair an
+   *   empty deny list with a deliberate audit of the allow side.
+   *
+   * @returns The PATCH response (`{ id, status, success }`). To read the
+   * updated `aclConfigForShared` block, call `get(nanoid)` after the
+   * promise resolves.
+   */
+  async updateAcl(
+    nanoid: string,
+    params: UpdateConnectedAccountAclParams
+  ): Promise<ConnectedAccountPatchResponse> {
+    const parsedParams = UpdateConnectedAccountAclParamsSchema.safeParse(params);
+    if (!parsedParams.success) {
+      throw new ValidationError('Failed to parse connected account ACL update params', {
+        cause: parsedParams.error,
+      });
+    }
+
+    const body: ConnectedAccountPatchParams = {
+      acl_config_for_shared: serializeAclConfigForWire(parsedParams.data),
+    };
+
+    try {
+      return await this.client.connectedAccounts.patch(nanoid, body);
+    } catch (error) {
+      // Same ACL-on-PRIVATE rejection the create path can hit — surface
+      // it as a typed error.
+      if (
+        error instanceof BadRequestError &&
+        typeof error.message === 'string' &&
+        error.message.includes('acl_config_for_shared is only valid on SHARED')
+      ) {
+        throw new ComposioAclOnlyForSharedError(error.message, { cause: error });
+      }
+      throw error;
+    }
   }
 }

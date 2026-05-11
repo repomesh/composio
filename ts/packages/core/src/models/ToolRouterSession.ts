@@ -1,5 +1,5 @@
 import { telemetry } from '../telemetry/Telemetry';
-import { Composio as ComposioClient } from '@composio/client';
+import { Composio as ComposioClient, BadRequestError } from '@composio/client';
 import { BaseComposioProvider } from '../provider/BaseProvider';
 import { ComposioConfig } from '../composio';
 import {
@@ -26,10 +26,17 @@ import {
 import { SessionMetaToolOptions } from '../types/modifiers.types';
 import { ConnectionRequest } from '../types/connectionRequest.types';
 import { createConnectionRequest } from './ConnectionRequest';
-import { ConnectedAccountStatuses } from '../types/connectedAccounts.types';
+import {
+  ConnectedAccountAclConfigSchema,
+  ConnectedAccountStatuses,
+  ConnectedAccountType,
+  ConnectedAccountTypeSchema,
+  ConnectedAccountAclConfig,
+} from '../types/connectedAccounts.types';
+import { z } from 'zod/v3';
 import { transform } from '../utils/transform';
 import { ToolkitConnectionStateSchema } from '../types/toolRouter.types';
-import { ValidationError } from '../errors';
+import { ComposioAclOnlyForSharedError, ValidationError } from '../errors';
 import { Tools } from './Tools';
 import { ToolRouterSessionFilesMount } from './ToolRouterSessionFileMount';
 import type {
@@ -43,6 +50,7 @@ import type { Tool, ToolExecuteResponse } from '../types/tool.types';
 import type { SessionProxyExecuteParams } from '../types/toolRouter.types';
 import type {
   SessionExecuteParams,
+  SessionLinkParams,
   SessionSearchParams,
 } from '@composio/client/resources/tool-router/session/session.mjs';
 import { SessionProxyExecuteParamsSchema } from '../types/toolRouter.types';
@@ -63,6 +71,21 @@ import { transformToolRouterUpdateParams } from '../lib/toolRouterParams';
 const COMPOSIO_MULTI_EXECUTE_TOOL = 'COMPOSIO_MULTI_EXECUTE_TOOL';
 export const DIRECT_CUSTOM_TOOL_DESCRIPTION_PREFIX =
   '[Direct tool - call directly, no search needed beforehand.]';
+
+/**
+ * Options accepted by {@link ToolRouterSession.authorize}.
+ *
+ * Validated at the SDK boundary so callers get clear `ValidationError`s for
+ * oversized ACL lists or invalid `userId`s — same caps as the equivalent
+ * `composio.connectedAccounts.link()` path (≤1000 entries per list, each
+ * `userId` 1..256 characters).
+ */
+const AuthorizeOptionsSchema = z.object({
+  callbackUrl: z.string().optional(),
+  alias: z.string().optional(),
+  accountType: ConnectedAccountTypeSchema.optional(),
+  aclConfigForShared: ConnectedAccountAclConfigSchema.optional(),
+});
 
 export class ToolRouterSession<
   TToolCollection,
@@ -303,16 +326,69 @@ export class ToolRouterSession<
   /**
    * Initiate an authorization flow for a toolkit.
    * Returns a ConnectionRequest with a redirect URL for the user.
+   *
+   * Use `accountType` and `aclConfigForShared` to create a SHARED connection
+   * with a per-user ACL in one flow. Default behaviour (omit both) creates
+   * a PRIVATE connection.
+   *
+   * `aclConfigForShared` is validated against the same caps as
+   * `composio.connectedAccounts.link()` (≤1000 entries per list, each
+   * `userId` 1..256 characters). Invalid input throws `ValidationError`
+   * at the SDK boundary.
    */
   async authorize(
     toolkit: string,
-    options?: { callbackUrl?: string; alias?: string }
+    options?: {
+      callbackUrl?: string;
+      alias?: string;
+      accountType?: ConnectedAccountType;
+      aclConfigForShared?: ConnectedAccountAclConfig;
+    }
   ): Promise<ConnectionRequest> {
-    const response = await this.client.toolRouter.session.link(this.sessionId, {
+    const requestOptions = AuthorizeOptionsSchema.safeParse(options ?? {});
+    if (!requestOptions.success) {
+      throw new ValidationError('Failed to parse tool router authorize options', {
+        cause: requestOptions.error,
+      });
+    }
+    const opts = requestOptions.data;
+    const aclWire: SessionLinkParams.ACLConfigForShared | undefined =
+      opts.aclConfigForShared === undefined
+        ? undefined
+        : {
+            ...(opts.aclConfigForShared.allowAllUsers !== undefined && {
+              allow_all_users: opts.aclConfigForShared.allowAllUsers,
+            }),
+            ...(opts.aclConfigForShared.allowedUserIds !== undefined && {
+              allowed_user_ids: opts.aclConfigForShared.allowedUserIds,
+            }),
+            ...(opts.aclConfigForShared.notAllowedUserIds !== undefined && {
+              not_allowed_user_ids: opts.aclConfigForShared.notAllowedUserIds,
+            }),
+          };
+    const body: SessionLinkParams = {
       toolkit,
-      ...(options?.callbackUrl && { callback_url: options.callbackUrl }),
-      ...(options?.alias != null && { alias: options.alias }),
-    });
+      ...(opts.callbackUrl !== undefined && { callback_url: opts.callbackUrl }),
+      ...(opts.alias !== undefined && { alias: opts.alias }),
+      ...(opts.accountType !== undefined && { account_type: opts.accountType }),
+      ...(aclWire !== undefined && { acl_config_for_shared: aclWire }),
+    };
+
+    let response;
+    try {
+      response = await this.client.toolRouter.session.link(this.sessionId, body);
+    } catch (error) {
+      // The server rejects ACL on PRIVATE connections — surface that as a
+      // typed error mirroring `composio.connectedAccounts.link()`.
+      if (
+        error instanceof BadRequestError &&
+        typeof error.message === 'string' &&
+        error.message.includes('acl_config_for_shared is only valid on SHARED')
+      ) {
+        throw new ComposioAclOnlyForSharedError(error.message, { cause: error });
+      }
+      throw error;
+    }
 
     return createConnectionRequest(
       this.client,
