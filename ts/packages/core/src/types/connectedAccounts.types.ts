@@ -302,8 +302,8 @@ export const CreateConnectedAccountLinkOptionsSchema = z.object({
   accountType: ConnectedAccountTypeSchema.optional(),
   /**
    * Per-user ACL for SHARED connections. Only valid when
-   * `accountType === 'SHARED'` — the backend rejects ACL on a PRIVATE
-   * connection with `ComposioAclOnlyForSharedError` (400).
+   * `accountType === 'SHARED'`; raises `ComposioAclOnlyForSharedError`
+   * on a PRIVATE connection.
    *
    * Omit the block (or pass `{}`) to keep the deny-by-default state: only the
    * creator can use the connection. Grant access by setting
@@ -342,8 +342,8 @@ export const UpdateConnectedAccountParamsSchema = z.object({
  * outer nesting at the boundary, so callers pass the three fields flat.
  *
  * PATCH-style semantics — omit a field to leave it unchanged; pass an
- * empty array to clear an allow/deny list. Backend rejects ACL writes on
- * a PRIVATE connection with `ComposioAclOnlyForSharedError` (400).
+ * empty array to clear an allow/deny list. Raises
+ * `ComposioAclOnlyForSharedError` on a PRIVATE connection.
  *
  * Each field is optional, but at least one must be provided — passing an
  * empty object is rejected as a no-op.

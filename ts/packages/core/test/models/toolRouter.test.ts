@@ -1849,9 +1849,8 @@ describe('ToolRouter', () => {
       expect(typeof connectionRequest.waitForConnection).toBe('function');
     });
 
-    // Bugbot-flagged gap: authorize() was passing aclConfigForShared straight
-    // to the wire while link() validated through Zod. These tests pin the
-    // parity — same 1000-entry list cap, same 256-char user_id cap.
+    // authorize() validates aclConfigForShared at the SDK boundary, same
+    // caps as link() — 1000-entry list, 256-char user_id.
     it('forwards accountType + nested acl_config_for_shared on the wire', async () => {
       mockClient.toolRouter.session.link.mockResolvedValueOnce(mockLinkResponse);
 
