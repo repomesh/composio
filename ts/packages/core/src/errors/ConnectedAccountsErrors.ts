@@ -96,7 +96,7 @@ export class ComposioAclOnlyForSharedError extends ComposioError {
       code: ConnectedAccountErrorCodes.ACL_ONLY_FOR_SHARED,
       statusCode: 400,
       possibleFixes: options.possibleFixes || [
-        'Set accountType: "SHARED" at create time, or omit ACL fields when creating/updating a PRIVATE connection.',
+        'Use accountType: "SHARED", or omit ACL fields when creating/updating a PRIVATE connection.',
       ],
     });
     this.name = 'ComposioAclOnlyForSharedError';
@@ -104,9 +104,10 @@ export class ComposioAclOnlyForSharedError extends ComposioError {
 }
 
 /**
- * Thrown by tool-router session create / PATCH when the session's `userId`
- * cannot use a pinned SHARED connection — caught at session-create time
- * so the session never enters a state that fails mid-execution.
+ * Thrown by `toolRouter.session.create()` / `session.patch()` when the
+ * session's `userId` cannot use a pinned SHARED connection. Raised at
+ * session-create time so the session never enters a state that fails
+ * mid-execution.
  */
 export class ComposioSharedConnectionNotAccessibleError extends ComposioError {
   constructor(
