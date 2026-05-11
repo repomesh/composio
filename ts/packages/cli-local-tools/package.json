@@ -1,6 +1,6 @@
 {
   "name": "@composio/cli-local-tools",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Local tool and toolkit declarations for the Composio CLI.",
   "type": "module",
   "main": "dist/index.mjs",
@@ -44,10 +44,10 @@
     "typecheck:tsc": "tsc --noEmit -p ./tsconfig.src.json"
   },
   "dependencies": {
+    "@composio/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "decompress": "^4.2.1",
-    "zod": "catalog:",
-    "zod-to-json-schema": "catalog:"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/decompress": "^4.2.7",

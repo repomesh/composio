@@ -16,6 +16,8 @@ import {
   ToolRouterSessionMetadata,
   ToolRouterSessionPreloadConfig,
   ToolRouterSessionWarning,
+  ToolRouterUpdateSessionConfig,
+  ToolRouterUpdateSessionConfigSchema,
 } from '../types/toolRouter.types';
 import {
   transformSearchResponse,
@@ -45,14 +47,22 @@ import type {
 } from '@composio/client/resources/tool-router/session/session.mjs';
 import { SessionProxyExecuteParamsSchema } from '../types/toolRouter.types';
 import { SessionContextImpl } from './SessionContext';
-import { findCustomTool, executeCustomTool } from './customToolExecution';
-import { findCustomToolMapEntryByFinalSlug } from './CustomTool';
+import {
+  assertUnambiguousCustomToolSlug,
+  findCustomTool,
+  executeCustomTool,
+} from './customToolExecution';
+import {
+  findCustomToolMapEntryByFinalSlug,
+  findCustomToolMapEntryByToolkitAndOriginalSlug,
+} from './CustomTool';
 import { transformProxyParams } from './proxyParamsTransform';
 import { inlineCustomToolsExperimental } from './inlineCustomToolsPayload';
+import { transformToolRouterUpdateParams } from '../lib/toolRouterParams';
 
 const COMPOSIO_MULTI_EXECUTE_TOOL = 'COMPOSIO_MULTI_EXECUTE_TOOL';
 export const DIRECT_CUSTOM_TOOL_DESCRIPTION_PREFIX =
-  '[Direct tool - call directly, no search or connection check needed beforehand.]';
+  '[Direct tool - call directly, no search needed beforehand.]';
 
 export class ToolRouterSession<
   TToolCollection,
@@ -62,9 +72,9 @@ export class ToolRouterSession<
   public readonly sessionId: string;
   public readonly mcp: ToolRouterMCPServerConfig;
   public readonly experimental: SessionExperimental;
-  public readonly preload: ToolRouterSessionPreloadConfig;
-  public readonly configVersion?: number;
-  public readonly warnings: ToolRouterSessionWarning[];
+  public preload: ToolRouterSessionPreloadConfig;
+  public configVersion?: number;
+  public warnings: ToolRouterSessionWarning[];
   private readonly preloadedCustomToolSlugs: string[];
   private readonly inlineCustomToolsPayload: ToolRouterSessionMetadata['inlineCustomToolsPayload'];
 
@@ -139,12 +149,13 @@ export class ToolRouterSession<
         if (customTool) {
           return executeCustomTool(customTool, input, this.sessionContext!);
         }
+        assertUnambiguousCustomToolSlug(this.customToolsMap, toolSlug);
         return this.executeBackendSessionTool(
           ToolsModel,
           toolSlug,
           input,
           modifiers,
-          toolBySlug.get(toolSlug.toUpperCase()),
+          toolBySlug.get(toolSlug.toUpperCase())
         );
       };
 
@@ -272,8 +283,11 @@ export class ToolRouterSession<
       name: tk.name,
       description: tk.description,
       tools: tk.tools.map(tool => {
-        // Look up the entry to get the final slug
-        const entry = this.customToolsMap!.byOriginalSlug.get(tool.slug.toUpperCase());
+        // Look up by toolkit + original slug so toolkits can safely reuse common names
+        // like VERSION, CLICK, or SEARCH without losing the backend-assigned final slug.
+        const entry =
+          findCustomToolMapEntryByToolkitAndOriginalSlug(this.customToolsMap, tk.slug, tool.slug) ??
+          this.customToolsMap!.byOriginalSlug.get(tool.slug.toUpperCase());
         return {
           slug: entry?.finalSlug ?? tool.slug,
           name: tool.name,
@@ -412,6 +426,7 @@ export class ToolRouterSession<
         logId: '',
       };
     }
+    assertUnambiguousCustomToolSlug(this.customToolsMap, toolSlug);
 
     // Remote execution
     const executeParams: SessionExecuteParams = {
@@ -469,6 +484,20 @@ export class ToolRouterSession<
           }
         : {}),
     };
+  }
+
+  /**
+   * Partially update the session configuration.
+   * Only the fields provided will be changed; omitted fields are preserved.
+   * Mutates this session's `configVersion`, `preload`, and `warnings` in-place.
+   */
+  async update(config: ToolRouterUpdateSessionConfig): Promise<void> {
+    const parsed = ToolRouterUpdateSessionConfigSchema.parse(config);
+    const params = transformToolRouterUpdateParams(parsed);
+    const response = await this.client.toolRouter.session.patch(this.sessionId, params);
+    this.configVersion = response.config_version;
+    this.preload = response.config.preload;
+    this.warnings = response.warnings ?? [];
   }
 
   // ── Private helpers ──────────────────────────────────────────
@@ -541,6 +570,7 @@ export class ToolRouterSession<
       if (entry) {
         localItems.push({ index: i, entry });
       } else {
+        assertUnambiguousCustomToolSlug(this.customToolsMap, parsed[i].tool_slug);
         remoteIndices.push(i);
       }
     }
