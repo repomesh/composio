@@ -333,12 +333,11 @@ class ComposioLegacyConnectedAccountsEndpointRetiredError(ConnectedAccountError)
 
 class ComposioAclOnlyForSharedError(ConnectedAccountError):
     """Raised when ACL fields (``allow_all_users``, ``allowed_user_ids``,
-    ``not_allowed_user_ids``) are sent on a ``PRIVATE`` connection — at
-    create time or via PATCH. ACL is only meaningful for ``SHARED``
-    connections.
+    ``not_allowed_user_ids``) are sent on a ``PRIVATE`` connection. ACL
+    is only meaningful for ``SHARED`` connections.
 
-    Fix: set ``account_type='SHARED'`` at create time, or omit the ACL
-    fields when creating/updating a PRIVATE connection.
+    Fix: use ``account_type='SHARED'``, or omit the ACL fields when
+    creating/updating a PRIVATE connection.
     """
 
     pass
@@ -363,10 +362,10 @@ class ComposioSharedAccessDeniedError(ConnectedAccountError):
 
 
 class ComposioSharedConnectionNotAccessibleError(ConnectedAccountError):
-    """Raised by tool-router session create / PATCH when the session's
-    ``user_id`` cannot use a pinned SHARED connection — caught at
-    session-create time so the session never enters a state that fails
-    mid-execution.
+    """Raised by ``tool_router.session.create()`` / ``session.patch()``
+    when the session's ``user_id`` cannot use a pinned SHARED connection.
+    Raised at session-create time so the session never enters a state
+    that fails mid-execution.
 
     Fix: grant the session user access via
     ``composio.connected_accounts.update_acl()`` on the pinned connection,
