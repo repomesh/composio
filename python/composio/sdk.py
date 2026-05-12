@@ -181,7 +181,7 @@ class Composio(t.Generic[TTool, TToolCollection], WithLogger):
 
         # experimental API — decorators for custom tools and toolkits,
         # plus experimental SDK methods (e.g. update_acl)
-        from composio.core.models.custom_tool import ExperimentalAPI
+        from composio.core.models.experimental import ExperimentalAPI
 
         self.experimental = ExperimentalAPI(client=self._client)
 

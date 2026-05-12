@@ -6,7 +6,7 @@ import pytest
 from composio_client import omit
 from pydantic import BaseModel, Field
 
-from composio.core.models.custom_tool import ExperimentalAPI
+from composio.core.models.experimental import ExperimentalAPI
 from composio.core.models.tool_router import (
     SESSION_PRESET_DIRECT_TOOLS,
     ToolkitConnectionsDetails,

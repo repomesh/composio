@@ -575,7 +575,7 @@ class TestConnectedAccountsAcl:
 
     @pytest.fixture
     def experimental(self, mock_client):
-        from composio.core.models.custom_tool import ExperimentalAPI
+        from composio.core.models.experimental import ExperimentalAPI
 
         return ExperimentalAPI(client=mock_client)
 
@@ -741,7 +741,7 @@ class TestConnectedAccountsAcl:
             experimental.update_acl("ca_abc", allow_all_users=True)
 
     def test_update_acl_requires_client(self):
-        from composio.core.models.custom_tool import ExperimentalAPI
+        from composio.core.models.experimental import ExperimentalAPI
 
         with pytest.raises(exceptions.ValidationError):
             ExperimentalAPI().update_acl("ca_abc", allow_all_users=True)
