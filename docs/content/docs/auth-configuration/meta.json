@@ -7,7 +7,6 @@
     "programmatic-auth-configs",
     "custom-auth-params",
     "connected-accounts",
-    "shared-connections",
     "migrating-initiate-to-link"
   ]
 }
