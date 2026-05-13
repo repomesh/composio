@@ -10,10 +10,7 @@ import ComposioClient, { BadRequestError } from '@composio/client';
 import {
   ConnectedAccountPatchParams,
   ConnectedAccountPatchResponse,
-  ConnectedAccountListParams as ConnectedAccountListParamsRaw,
 } from '@composio/client/resources/connected-accounts';
-import { LinkCreateParams } from '@composio/client/resources/link';
-import { SessionLinkParams } from '@composio/client/resources/tool-router/session/session';
 import {
   ConnectedAccountExperimental,
   UpdateConnectedAccountAclParams,
@@ -34,8 +31,9 @@ export const ACL_ONLY_FOR_SHARED_ERROR_FRAGMENT = 'acl_config_for_shared is only
 
 /**
  * Structural shape of the wire's experimental block on requests. Both
- * `LinkCreateParams.Experimental` and `SessionLinkParams.Experimental`
- * (Stainless-generated, nominally distinct) accept this shape.
+ * the `link.create` and `tool_router.session.link` wire types are
+ * Stainless-generated as nominally distinct namespaces but accept this
+ * shape — sharing one structural type keeps the SDK helpers reusable.
  */
 type ExperimentalWire = {
   account_type?: 'PRIVATE' | 'SHARED';
@@ -190,9 +188,3 @@ export class Experimental {
     }
   }
 }
-
-// Re-exports so the wire-shape helpers stay reachable from the existing
-// callsites in `models/` without bouncing through `experimental.ts` —
-// the canonical home is here, but the imports look unchanged at the
-// caller.
-export type { LinkCreateParams, SessionLinkParams, ConnectedAccountListParamsRaw };
