@@ -3,14 +3,14 @@ import type { MDXComponents } from 'mdx/types';
 import type { ComponentProps } from 'react';
 import { Accordion as BaseAccordion, Accordions } from 'fumadocs-ui/components/accordion';
 import { Tabs, Tab, TabsList, TabsTrigger, TabsContent } from 'fumadocs-ui/components/tabs';
-import { Callout } from 'fumadocs-ui/components/callout';
+import { Callout } from '@/components/callout';
 import { Step, Steps } from 'fumadocs-ui/components/steps';
 import { Card, Cards } from 'fumadocs-ui/components/card';
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
 import { Heading } from '@/components/heading';
 import { YouTube } from '@/components/youtube';
 import { ProviderCard, ProviderGrid } from '@/components/provider-card';
-import { FrameworkSelector, QuickstartFlow, FrameworkOption, PromptBanner } from '@/components/quickstart';
+import { FrameworkSelector, QuickstartFlow, FrameworkOption } from '@/components/quickstart';
 import { IntegrationTabs, IntegrationContent } from '@/components/quickstart/integration-tabs';
 import { ToolTypeFlow, ToolTypeOption } from '@/components/tool-type-selector';
 import { ConnectFlow, ConnectClientOption } from '@/components/connect-flow';
@@ -23,6 +23,7 @@ import { ToolkitsLanding } from '@/components/toolkits/toolkits-landing';
 import { ManagedAuthList } from '@/components/toolkits/managed-auth-list';
 import { Mermaid } from '@/components/mermaid';
 import { AIToolsBanner } from '@/components/ai-tools-banner';
+import { DocsHero } from '@/components/docs-hero';
 import { Glossary, GlossaryTerm } from '@/components/glossary';
 import { ApiBaseUrl } from '@/components/api-base-url';
 import { ApiEndpointsTable } from '@/components/api-endpoints-table';
@@ -30,6 +31,7 @@ import {
   ShieldCheck,
   Route as RouteIcon,
   Key,
+  Search,
   Wrench,
   Database,
   Zap,
@@ -83,7 +85,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     FrameworkOption,
     IntegrationTabs,
     IntegrationContent,
-    PromptBanner,
     ToolTypeFlow,
     ToolTypeOption,
     ConnectFlow,
@@ -98,6 +99,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ManagedAuthList,
     Mermaid,
     AIToolsBanner,
+    DocsHero,
     StepTitle,
     Glossary,
     GlossaryTerm,
@@ -107,6 +109,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ShieldCheck,
     RouteIcon,
     Key,
+    Search,
     Wrench,
     Database,
     Zap,
