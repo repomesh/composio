@@ -7,6 +7,7 @@ import localFont from 'next/font/local';
 import { PostHogProvider } from '@/components/posthog-provider';
 import { DecimalWidget } from '@/components/decimal-widget';
 import CustomSearchDialog from '@/components/custom-search-dialog';
+import { ScrollReset } from '@/components/scroll-reset';
 import { source } from '@/lib/source';
 
 const defaultLinkSlugs = [
@@ -108,14 +109,14 @@ export default function Layout({ children }: LayoutProps<'/'>) {
         />
       </head>
       <body className="flex flex-col min-h-dvh font-sans">
+        <ScrollReset />
         <Analytics />
         <PostHogProvider>
           <RootProvider
             theme={{
-              defaultTheme: 'light',
+              defaultTheme: 'system',
               attribute: 'class',
-              enableSystem: false,
-              forcedTheme: 'light',
+              enableSystem: true,
             }}
             search={{
               SearchDialog: CustomSearchDialog,
