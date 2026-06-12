@@ -16,11 +16,10 @@ Starting fresh? Skip this guide and read [Configuring Sessions](/docs/configurin
 </Callout>
 
 <Callout type="info">
-Just connecting apps to your own AI client (Claude, Cursor, ChatGPT) for personal use — not building
-an app? You don't need the SDK. Use **[Composio For You](https://connect.composio.dev)** to connect
-across 1000+ apps in a few clicks, then point your client at the URL it gives you. Switch to it any
-time from the product switcher in the top-left of the dashboard. Reserve `session.mcp.url` for
-programmatic, in-app use.
+Just connecting apps to your own agent for personal use — not building an app? You don't need the
+SDK. Use **Composio For You** to connect across 1000+ apps in a few clicks — switch to it from the
+product switcher in the top-left of the dashboard. Reserve `session.mcp.url` for programmatic,
+in-app use.
 </Callout>
 
 ## What carries over (you keep all of this)
@@ -28,8 +27,8 @@ programmatic, in-app use.
 - **Your tools** — every tool you exposed on a server is available in a session.
 - **Your auth configs and connected accounts** — pass the same `ac_…` IDs; your users **do not
   re-authenticate**.
-- **The MCP URL pattern** — you still get a URL (`session.mcp.url`) that plugs into Claude Desktop,
-  Cursor, OpenAI Agents, Mastra — the same clients, the same protocol.
+- **The MCP URL pattern** — you still get a URL (`session.mcp.url`) that plugs into your agent — any
+  MCP-compatible client — the same way, the same protocol.
 - **Per-user isolation** — still keyed by `user_id`.
 - **Tool restriction** — you can still pin a session to an exact, fixed tool list (see Step 3).
 
@@ -118,8 +117,8 @@ re-auth.
 <Step>
 <StepTitle>Point your MCP client at the new URL</StepTitle>
 
-Swap the generated server URL for `session.mcp.url` wherever your client connects — Claude Desktop,
-Cursor, OpenAI Agents, Mastra. Nothing else about the client changes.
+Swap the generated server URL for `session.mcp.url` wherever your agent connects. Nothing else about
+the client changes.
 
 ```python
 # Before: https://backend.composio.dev/v3/mcp/<SERVER_ID>?user_id=<USER_ID>
@@ -243,8 +242,7 @@ const result = await session.execute("GITHUB_CREATE_ISSUE", {
 - **Triggers** — unchanged; continue using `composio.triggers.*` and webhooks (triggers aren't part
   of sessions yet).
 - **Dashboard** — sessions are created via the SDK. For no-code, personal app connections, use
-  [Composio For You](https://connect.composio.dev) — reachable from the product switcher in the
-  top-left of the dashboard.
+  **Composio For You** — reachable from the product switcher in the top-left of the dashboard.
 
 ## Get started
 
